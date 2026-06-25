@@ -11,9 +11,8 @@ PRD 전문: `prd.md`
 |---|---|
 | Frontend | Next.js 16 (TypeScript, App Router) |
 | Backend | Python 3.12 + FastAPI |
-| DB | PostgreSQL 16 + PostGIS |
-| Cache | Redis 7 |
-| IaC | Terraform (AWS — ECS, RDS, ElastiCache) |
+| DB | PostgreSQL 16 + PostGIS (AWS RDS) |
+| IaC | Terraform (AWS — ECS, RDS) |
 | CI/CD | GitHub Actions (OIDC, ECR → ECS / S3+CloudFront) |
 
 ---
@@ -157,7 +156,7 @@ mcp__atlassian__editJiraIssue(issueIdOrKey: "SCRUM-XX", fields: {description: ".
 WhatWeDoin/
 ├── frontend/           # Next.js 16        (SCRUM-64)
 ├── backend/            # FastAPI            (SCRUM-65)
-├── docker-compose.yml  # 루트: DB + Cache   (SCRUM-66)
+├── docker-compose.yml  # 루트: DB            (SCRUM-66)
 ├── terraform/          # AWS IaC            (SCRUM-67)
 ├── .github/workflows/  # CI/CD             (SCRUM-68)
 ├── .gitignore
