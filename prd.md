@@ -11,7 +11,7 @@
 ### 변경 이력
 | 버전 | 일자 | 변경 |
 |---|---|---|
-| v2.3 | 2026-06-25 | **인프라 간소화.** Redis/ElastiCache·S3+CloudFront 제거. 캐시·레이트리밋·refresh 토큰·날씨 캐시 모두 PostgreSQL로 처리. AWS 인프라: ECS + RDS + ALB 유지. 프론트는 Vercel(또는 정적 호스팅). DB 스키마 관리: Alembic 제거 → `init.sql` 스크립트로 대체. |
+| v2.3 | 2026-06-25 | **인프라 간소화.** Redis/ElastiCache·S3+CloudFront 제거. 캐시·레이트리밋·refresh 토큰·날씨 캐시 모두 PostgreSQL로 처리. AWS 인프라: ECS + RDS + ALB 유지. 프론트는 Vercel(또는 정적 호스팅). DB 스키마 관리: Alembic 유지. |
 | v2.2 | 2026-06-25 | **백엔드 스택 변경.** Java 21 + Spring Boot → **Python 3.12 + FastAPI**. Langfuse Python SDK 네이티브 지원이 주된 이유. SQLAlchemy 2.x(async) + asyncpg, Alembic(마이그레이션), uv(패키지 관리), prometheus-fastapi-instrumentator(메트릭). `/actuator/health` → `GET /health`. |
 | v2.1 | 2026-06-25 | **미해결 결정 해소.** ① `rating.prior_mean=50`(중립값, D-18). ② `theme_tag` enum 12종 확정(D-14): FOOD/CAFE/BAR/BOARD_GAME/KARAOKE/ARCADE/PARK/CULTURE/SHOPPING/NIGHT_VIEW/MOVIE/ACTIVITY. ③ 리뷰 링크 안전성 검사 제거, `rel=nofollow`만 적용 + 리뷰 신고 기능(`course_review_reports`) 추가(D-15). ④ IP 리뷰 추가 어뷰징 방어(캡차 등) → V2(D-19). ⑤ 날씨 placeholder: OpenWeatherMap Current API(무료) + 역 좌표 기반, 30분 DB 캐시(D-17). ⑥ 코스 공유: SEO 공개 페이지(`/courses/{id}`) SSR + OG 태그, 이미지 공유는 V2(D-16). |
 | v2.0 | 2026-06-25 | **워크플로우 전면 개편.** ① 추천 입력을 plan_type/budget 선택 → **지하철역 + 질의어(자연어)** 로 변경(동적 placeholder). ② **AI 추천 생성은 로그인 필수**(비로그인은 조회·평가만). ③ 무료 **재추천(regenerate) 삭제**, 생성 자체가 **하루 3회 무료**. ④ 생성 코스는 **전부 즉시 공개·DB 저장**(`is_saved` 게이트 제거). ⑤ 피드백을 👍/👎 → **100점 만점 5단위 점수 + 댓글 + 링크 통합 리뷰**(회원 1회/비로그인 IP)로 변경, 랭킹은 **베이지안 평균**. ⑥ `plan_type` enum 폐기 → **자유 `theme_tags`** + `companion_type`(4종) + `head_count`(인원). ⑦ 메인에서 역·테마·인원·예산 조건으로 전체 저장 코스 조회. ⑧ 추천 시 **유사 테마 고득점 코스 3개** 동반 노출. |
@@ -383,7 +383,7 @@
 | **IaC / 배포** | Terraform | 전 인프라 코드화, dev/prod workspace 분리 |
 | **컨테이너** | Docker (ECR) | Python FastAPI 이미지 → ECR → ECS Fargate |
 | **패키지 관리** | uv | 의존성 설치·가상환경·lock 파일. `pyproject.toml` 기반 |
-| **DB 초기화** | SQL 스크립트 (`init.sql`) | PostgreSQL 컨테이너 볼륨에 init 스크립트 마운트. 스키마 변경 시 스크립트 수정 후 볼륨 재생성 |
+| **DB 마이그레이션** | Alembic | SQLAlchemy 연동 스키마 버전 관리, 드리프트 방지 |
 | **헬스/메트릭** | FastAPI 커스텀 라우터 | `GET /health`(ALB 헬스체크), `GET /metrics`(Prometheus, `prometheus-fastapi-instrumentator`) |
 | **모니터링** | Sentry + CloudWatch | 예외 추적 + 인프라 메트릭·알람 |
 | **LLM Observability** | Langfuse (Python SDK) | `langfuse` 패키지로 FastAPI 미들웨어 수준 통합. Claude 호출 트레이스·토큰 비용·지연·`served_from` 추적 |
