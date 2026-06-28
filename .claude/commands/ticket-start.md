@@ -1,5 +1,5 @@
 ---
-description: "Jira 티켓 시작: 이슈 조회 → 브랜치 생성 → In Progress 전환. 사용법: /ticket-start SCRUM-XX [feat|fix|chore]"
+description: "Jira 티켓 시작: 이슈 조회 → 브랜치 생성 + In Progress 전환 → 구현 안내. 사용법: /ticket-start SCRUM-XX [feat|fix|chore]"
 allowed-tools: ["mcp__atlassian__getJiraIssue", "mcp__atlassian__transitionJiraIssue", "Bash"]
 ---
 
@@ -18,7 +18,11 @@ $ARGUMENTS에서 다음을 파싱하세요:
 
 티켓 상태가 이미 "In Progress" 또는 "Done"이면 경고를 출력하고 계속할지 확인을 구하세요.
 
-## Step 2 — main 동기화 + 브랜치 생성
+## Step 2 — 브랜치 생성 + 진행 중 전환
+
+두 작업을 동시에 진행합니다.
+
+**브랜치 생성:**
 
 ```bash
 gh repo sync
@@ -36,9 +40,19 @@ gh repo sync
 git checkout -b {BRANCH_TYPE}/SCRUM-{NUMBER}-{slug}
 ```
 
-## Step 3 — In Progress 전환
+**진행 중 전환:**
 
 `mcp__atlassian__transitionJiraIssue(issueIdOrKey: TICKET_KEY, transition: {id: "21"})`
+
+## Step 3 — 구현 + 커밋 안내
+
+티켓의 작업 순서와 인수조건을 바탕으로 구현해야 할 내용을 단계별로 정리해서 출력하세요.
+각 인수조건 항목을 충족하기 위한 구체적인 구현 포인트를 제시합니다.
+
+커밋은 아래 형식으로 항목별로 나눠서 작성할 것을 안내합니다:
+```
+{BRANCH_TYPE}(SCRUM-{NUMBER}): <변경 내용 한 줄 요약>
+```
 
 ## Step 4 — 결과 출력
 
@@ -46,9 +60,9 @@ git checkout -b {BRANCH_TYPE}/SCRUM-{NUMBER}-{slug}
 브랜치 생성 : {브랜치명}
 티켓 상태  : In Progress
 
-인수조건 — /ticket-done 실행 전 모두 충족 필요:
-  [ ] <항목 1>
-  [ ] <항목 2>
+구현 체크리스트:
+  [ ] <인수조건 항목 1> — <구현 포인트>
+  [ ] <인수조건 항목 2> — <구현 포인트>
   ...
 
 커밋 형식: {BRANCH_TYPE}(SCRUM-{NUMBER}): <내용>
