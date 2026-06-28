@@ -21,8 +21,8 @@ PRD 전문: `prd.md`
 
 > **도구 원칙**
 > - Jira 조회·상태 전환·설명 수정 → **Jira MCP** (`mcp__atlassian__*`)
-> - Git 로컬 작업 (브랜치·커밋·스테이징) → **`git`**
-> - GitHub 원격 작업 (push·PR 생성·머지·브랜치 삭제) → **`gh`**
+> - Git/GitHub 작업 전반 → **`gh`**
+> - 로컬 스테이징·커밋 → **`git add / git commit`** (gh 대체 불가)
 
 ---
 
@@ -52,8 +52,7 @@ chore/SCRUM-{번호}-{kebab-case-설명}  # 설정·문서
 
 ```bash
 # 로컬 브랜치 생성
-git checkout main
-git pull origin main
+gh repo sync                              # main 최신화
 git checkout -b feat/SCRUM-{번호}-{설명}
 ```
 
@@ -94,11 +93,7 @@ cd backend  && pytest     # Backend
 ### 5단계 — PR 생성 + 머지 (gh)
 
 ```bash
-# 원격 브랜치 push
-gh repo sync                        # main 최신화 확인용
-git push origin feat/SCRUM-{번호}-{설명}
-
-# PR 생성
+# 원격 브랜치 push + PR 생성
 gh pr create \
   --title "feat(SCRUM-{번호}): {티켓 제목}" \
   --body "Closes SCRUM-{번호}" \
@@ -127,15 +122,15 @@ mcp__atlassian__editJiraIssue(issueIdOrKey: "SCRUM-XX", fields: {description: ".
 ```
 [Jira MCP] 티켓 확인
       ↓
-[git]      main pull → 브랜치 생성
+[gh]       repo sync → 브랜치 생성
 [Jira MCP] 티켓 → "진행 중"
       ↓
-[git]      구현 + 커밋
+[git]      구현 + 커밋 (add/commit)
       ↓
-[git/npm/pytest] 테스트 Green 확인
+[gh/npm/pytest] 테스트 Green 확인
 [Jira MCP] 인수조건 체크박스 전부 [x] 확인
       ↓
-[gh]       push → PR 생성 → 머지 → 브랜치 삭제
+[gh]       pr create → pr merge → 브랜치 삭제
       ↓
 [Jira MCP] 티켓 → "완료" + 체크박스 업데이트
 ```
