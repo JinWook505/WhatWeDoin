@@ -11,8 +11,9 @@
 ### 변경 이력
 | 버전 | 일자 | 변경 |
 |---|---|---|
+| v2.3 | 2026-06-25 | **인프라 간소화.** Redis/ElastiCache·S3+CloudFront 제거. 캐시·레이트리밋·refresh 토큰·날씨 캐시 모두 PostgreSQL로 처리. AWS 인프라: ECS + RDS + ALB 유지. 프론트는 Vercel(또는 정적 호스팅). DB 스키마 관리: Alembic 제거 → `init.sql` 스크립트로 대체. |
 | v2.2 | 2026-06-25 | **백엔드 스택 변경.** Java 21 + Spring Boot → **Python 3.12 + FastAPI**. Langfuse Python SDK 네이티브 지원이 주된 이유. SQLAlchemy 2.x(async) + asyncpg, Alembic(마이그레이션), uv(패키지 관리), prometheus-fastapi-instrumentator(메트릭). `/actuator/health` → `GET /health`. |
-| v2.1 | 2026-06-25 | **미해결 결정 해소.** ① `rating.prior_mean=50`(중립값, D-18). ② `theme_tag` enum 12종 확정(D-14): FOOD/CAFE/BAR/BOARD_GAME/KARAOKE/ARCADE/PARK/CULTURE/SHOPPING/NIGHT_VIEW/MOVIE/ACTIVITY. ③ 리뷰 링크 안전성 검사 제거, `rel=nofollow`만 적용 + 리뷰 신고 기능(`course_review_reports`) 추가(D-15). ④ IP 리뷰 추가 어뷰징 방어(캡차 등) → V2(D-19). ⑤ 날씨 placeholder: OpenWeatherMap Current API(무료) + 역 좌표 기반, 30분 Redis 캐시(D-17). ⑥ 코스 공유: SEO 공개 페이지(`/courses/{id}`) SSR + OG 태그, 이미지 공유는 V2(D-16). |
+| v2.1 | 2026-06-25 | **미해결 결정 해소.** ① `rating.prior_mean=50`(중립값, D-18). ② `theme_tag` enum 12종 확정(D-14): FOOD/CAFE/BAR/BOARD_GAME/KARAOKE/ARCADE/PARK/CULTURE/SHOPPING/NIGHT_VIEW/MOVIE/ACTIVITY. ③ 리뷰 링크 안전성 검사 제거, `rel=nofollow`만 적용 + 리뷰 신고 기능(`course_review_reports`) 추가(D-15). ④ IP 리뷰 추가 어뷰징 방어(캡차 등) → V2(D-19). ⑤ 날씨 placeholder: OpenWeatherMap Current API(무료) + 역 좌표 기반, 30분 DB 캐시(D-17). ⑥ 코스 공유: SEO 공개 페이지(`/courses/{id}`) SSR + OG 태그, 이미지 공유는 V2(D-16). |
 | v2.0 | 2026-06-25 | **워크플로우 전면 개편.** ① 추천 입력을 plan_type/budget 선택 → **지하철역 + 질의어(자연어)** 로 변경(동적 placeholder). ② **AI 추천 생성은 로그인 필수**(비로그인은 조회·평가만). ③ 무료 **재추천(regenerate) 삭제**, 생성 자체가 **하루 3회 무료**. ④ 생성 코스는 **전부 즉시 공개·DB 저장**(`is_saved` 게이트 제거). ⑤ 피드백을 👍/👎 → **100점 만점 5단위 점수 + 댓글 + 링크 통합 리뷰**(회원 1회/비로그인 IP)로 변경, 랭킹은 **베이지안 평균**. ⑥ `plan_type` enum 폐기 → **자유 `theme_tags`** + `companion_type`(4종) + `head_count`(인원). ⑦ 메인에서 역·테마·인원·예산 조건으로 전체 저장 코스 조회. ⑧ 추천 시 **유사 테마 고득점 코스 3개** 동반 노출. |
 | v1.0 | 2026-06-24 | 최초 PRD. 단일 역 선택 기준 일관 적용. |
 
@@ -46,7 +47,6 @@
 | 코스 리뷰율 | 생성 코스 중 리뷰(점수)가 달린 비율 | ≥ 25% |
 | 코스 평균 점수 | 리뷰된 코스의 베이지안 평균 분포 | 모니터링(추천 품질 핵심 지표) |
 | 역 탐험 다양성 | 사용자당 추천받은 서로 다른 역 수 | 모니터링(탐험성 핵심 지표) |
-| 캐시 적중률 | `served_from=CACHE` 비율 | ≥ 30% (비용 절감) |
 | 가입 전환율 | 비로그인 → 카카오 로그인 | ≥ 10% |
 
 ### 1.5 MVP 범위 (In / Out)
@@ -194,7 +194,7 @@
 
 #### US-B5. 🆕 생성 횟수 제한(어뷰징·비용 방어) — **P0**
 > (운영자) 로그인 어뷰징으로 LLM 실비가 폭증하지 않게, 생성은 하루 3회 무료로 제한하고 싶다.
-> 관련: `ratelimit.user_daily=3`, Redis 카운터, `429`, D-9
+> 관련: `ratelimit.user_daily=3`, DB 카운터, `429`, D-9
 
 - [ ] Given 로그인 사용자, When 일일 생성 한도(`ratelimit.user_daily=3`)를 초과하면, Then `RATE_LIMIT_EXCEEDED`(429)로 차단되고 "내일 다시" 안내가 표시된다.
 - [ ] Given 멱등 재요청·캐시 적중(`served_from=CACHE`)·실패(폴백) 응답, When 처리하면, Then 일일 한도는 **차감되지 않는다**(실 LLM 생성만 1회 차감).
@@ -281,7 +281,7 @@
 
 - [ ] Given access 토큰 만료, When refresh로 재발급하면, Then 새 access가 발급되고 refresh는 회전(rotation)되어 이전 `jti`는 폐기된다.
 - [ ] Given refresh 토큰 재사용 감지, When 탐지하면, Then 해당 사용자의 모든 refresh 토큰이 폐기된다.
-- [ ] Given 로그아웃, When 호출하면, Then 서버의 `rt:{user_id}:*`가 무효화되어 더 이상 재발급되지 않는다.
+- [ ] Given 로그아웃, When 호출하면, Then 서버의 refresh 토큰이 무효화되어 더 이상 재발급되지 않는다.
 
 #### US-E4. 마이페이지 조회·수정 — **P1**
 > 관련: `GET/PATCH /v1/users/me`, 5장
@@ -300,7 +300,7 @@
 
 - [ ] Given 로그인 사용자, When 탈퇴하면, Then `status=WITHDRAWN`과 동시에 닉네임·프로필·이메일·식별 항목이 파기/익명화된다.
 - [ ] Given 통계 보존이 필요한 리뷰/요청 로그, When 탈퇴 처리하면, Then `user_id`가 익명화되고 식별 흔적(IP 해시 등)이 분리된다.
-- [ ] Given 탈퇴, When 처리하면, Then Redis의 `rt:{user_id}:*` 토큰이 일괄 폐기된다.
+- [ ] Given 탈퇴, When 처리하면, Then DB `refresh_tokens`의 해당 사용자 레코드가 일괄 폐기된다.
 
 ### Epic F. 🆕 데이터·운영·비기능 (출시 게이트)
 
@@ -375,16 +375,15 @@
 | **모바일 클라이언트 (2차)** | React Native (Expo) | 웹 검증 후 확장. 웹과 도메인 타입(TS) 공유 |
 | **백엔드 API** | Python 3.12 + FastAPI | Langfuse Python SDK 네이티브 지원이 핵심 선정 이유. `async/await`(asyncio)로 LLM·외부 API I/O 처리. SQLAlchemy 2.x(async) + asyncpg |
 | **메인 DB** | PostgreSQL + PostGIS | 역 5km 반경 검색을 DB 레벨에서 처리(핵심). 트랜잭션 안정성 |
-| **캐시 / 레이트리밋** | Redis | 코스 캐시(TTL 2주), 일일 생성 카운트(user)·리뷰 IP 카운트, refresh 토큰 |
 | **LLM** | Claude API (Anthropic) | 코스 조합/설명 생성. 단계적 모델 전략(저비용 필터 + 고급 톤) |
 | **지도 렌더링** | 카카오맵 JS SDK | 역 마커·코스 동선 표시(웹 1차) |
 | **장소 데이터 소스** | 카카오 로컬 REST API 1차 / 크롤링 보조 | 기본 메타는 API(무료 쿼터), 영업시간·가격은 크롤링 보강 후 `places` 캐싱 |
 | **인증** | 카카오 OAuth 2.0(단일) + 자체 JWT | 카카오톡 단일 간편로그인. 세션은 자체 JWT. 비로그인도 메인 기능 전부 사용 |
-| **인프라** | AWS (Seoul) | ECS on Fargate + RDS(PG) + ElastiCache(Redis) + ALB. 웹은 S3+CloudFront |
+| **인프라** | AWS (Seoul) | ECS on Fargate + RDS(PG) + ALB. 프론트는 Vercel(또는 정적 호스팅) |
 | **IaC / 배포** | Terraform | 전 인프라 코드화, dev/prod workspace 분리 |
 | **컨테이너** | Docker (ECR) | Python FastAPI 이미지 → ECR → ECS Fargate |
 | **패키지 관리** | uv | 의존성 설치·가상환경·lock 파일. `pyproject.toml` 기반 |
-| **DB 마이그레이션** | Alembic | SQLAlchemy 연동 스키마 버전 관리, 드리프트 방지 |
+| **DB 초기화** | SQL 스크립트 (`init.sql`) | PostgreSQL 컨테이너 볼륨에 init 스크립트 마운트. 스키마 변경 시 스크립트 수정 후 볼륨 재생성 |
 | **헬스/메트릭** | FastAPI 커스텀 라우터 | `GET /health`(ALB 헬스체크), `GET /metrics`(Prometheus, `prometheus-fastapi-instrumentator`) |
 | **모니터링** | Sentry + CloudWatch | 예외 추적 + 인프라 메트릭·알람 |
 | **LLM Observability** | Langfuse (Python SDK) | `langfuse` 패키지로 FastAPI 미들웨어 수준 통합. Claude 호출 트레이스·토큰 비용·지연·`served_from` 추적 |
@@ -523,7 +522,7 @@ CREATE UNIQUE INDEX uq_rec_idem ON recommendation_requests (user_id, idempotency
     WHERE idempotency_key IS NOT NULL;
 CREATE INDEX idx_rec_recent ON recommendation_requests (user_id, created_at DESC);  -- 최근 질문 placeholder용
 ```
-> **일일 한도(D-9)**: 무료 재추천 개념 없이 **생성 1건 = 1회 차감**. `served_from='LLM'` 신규 생성만 카운트(멱등 재요청·`CACHE` 적중·실패 폴백은 미차감). 한도는 Redis `rl:gen:user:{user_id}:{YYYYMMDD}` < `ratelimit.user_daily(=3)`.
+> **일일 한도(D-9)**: 무료 재추천 개념 없이 **생성 1건 = 1회 차감**. `served_from='LLM'` 신규 생성만 카운트(멱등 재요청·`CACHE` 적중·실패 폴백은 미차감). 한도는 `recommendation_requests`에서 `served_from='LLM'` 오늘(KST) 건수 COUNT < `ratelimit.user_daily(=3)`.
 > **최근 질문 placeholder(US-A3)**: `idx_rec_recent`로 사용자 최근 `query_text`를 빠르게 조회해 입력창 placeholder 1순위로 사용.
 
 #### 6.2.6 `course_reviews` — 코스 리뷰(점수 + 댓글 + 링크)
@@ -579,7 +578,7 @@ CREATE UNIQUE INDEX uq_report_ip   ON course_review_reports (review_id, ip_hash)
 > - **운영 처리**: 신고 누적 수(`report_count`, 별도 집계 또는 COUNT 쿼리)가 임계치(`report.hide_threshold`, `app_config`)를 넘으면 관리자 검토 대기 상태로 표시. 자동 숨김은 V2.
 > - 신고 자체는 공개 정책에 영향 없음(코스 즉시 공개 D-10 유지). 운영자가 수동 비공개 처리.
 
-#### 6.2.7 `course_cache` (Redis 우선, DB 백업 선택)
+#### 6.2.7 `course_cache`
 ```sql
 CREATE TABLE course_cache (
     cache_key   VARCHAR(64) PRIMARY KEY,                -- hash(station_id + 정규화된 parsed_input)
@@ -609,7 +608,7 @@ CREATE TABLE app_config (
 -- ('recommend.similar_top_n', '3')             -- 유사 테마 동반 노출 개수(D-13)
 -- ('report.hide_threshold', '5')              -- 신고 누적 시 관리자 검토 대기 임계치(D-15)
 ```
-> **레이트리밋 카운터(Redis)**: 생성=`rl:gen:user:{user_id}:{YYYYMMDD}`, 비로그인 리뷰=`rl:review:ip:{ip_hash}:{YYYYMMDD}`. `YYYYMMDD`는 KST 기준, 키 TTL 26시간. 초과 시 `429 RATE_LIMIT_EXCEEDED`.
+> **레이트리밋 카운터(DB)**: 생성은 `recommendation_requests`에서 `served_from='LLM'`이고 `created_at` 오늘(KST) 건수 COUNT, 비로그인 리뷰는 `course_reviews`에서 `ip_hash` 오늘(KST) 건수 COUNT. 초과 시 `429 RATE_LIMIT_EXCEEDED`.
 
 #### 6.2.9 `places` — 장소 마스터 (외부 플레이스 캐시)
 ```sql
@@ -666,8 +665,19 @@ BEGIN NEW.updated_at = now(); RETURN NEW; END;
 $$ LANGUAGE plpgsql;
 -- 예: CREATE TRIGGER trg_users_updated BEFORE UPDATE ON users
 --     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- refresh 토큰 저장소 (DB)
+CREATE TABLE refresh_tokens (
+    jti         VARCHAR(64) PRIMARY KEY,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_agent  TEXT,
+    issued_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at  TIMESTAMPTZ NOT NULL,
+    revoked_at  TIMESTAMPTZ
+);
+CREATE INDEX idx_rt_user ON refresh_tokens (user_id);
 ```
-> **refresh 토큰 저장소(Redis)**: 키 `rt:{user_id}:{jti}` → `{ user_agent, issued_at }`, TTL=`JWT_REFRESH_TTL`. 회전: refresh 사용 시 기존 `jti` 삭제 후 신규 발급(재사용 감지 시 사용자 전 토큰 폐기). 로그아웃/탈퇴: `rt:{user_id}:*` 일괄 삭제.
+> **refresh 토큰 저장소(DB)**: `refresh_tokens` 테이블에 저장. 회전: refresh 사용 시 기존 `jti` `revoked_at` 설정 후 신규 발급(재사용 감지 시 사용자 전 토큰 폐기). 로그아웃/탈퇴: `WHERE user_id = ?` 일괄 `revoked_at` 설정(또는 DELETE). 만료된 레코드는 정기 배치로 정리.
 
 ---
 
@@ -839,7 +849,7 @@ GET /v1/recommend/placeholder?station_id=239
             "weather": { "condition": "CLEAR", "temp_c": 24 } }, "error": null }
 ```
 - `source`: `RECENT`(사용자 최근 `query_text`) / `WEATHER` / `TIME` / `DEFAULT`. 비로그인은 `RECENT` 제외.
-- **날씨 조회(D-17)**: 역 좌표로 OpenWeatherMap Current Weather API 호출(`units=metric`). 응답을 `weather_placeholder_cache:{station_id}` Redis 키에 **30분 캐시**. 분류는 **기상 상태(State)** + **온도 구간(Temp tier)** 두 축의 조합으로 결정.
+- **날씨 조회(D-17)**: 역 좌표로 OpenWeatherMap Current Weather API 호출(`units=metric`). 응답을 `app_config`(또는 별도 `weather_cache` DB 테이블)에 **30분 캐시**(`OPENWEATHER_CACHE_TTL_SEC`). 분류는 **기상 상태(State)** + **온도 구간(Temp tier)** 두 축의 조합으로 결정.
 
 #### 온도 구간 (OWM `main.temp`, °C)
 | tier | 범위 | 체감 |
@@ -966,12 +976,12 @@ GET /v1/courses/{course_id}
 0. 인증 검사: 로그인 필수(없으면 401 UNAUTHORIZED), 종료                         [D-8]
    멱등성 검사: Idempotency-Key 동일 → 저장된 이전 결과 반환(LLM 미호출·한도 미차감), 종료
 1. 입력 검증 + 한도: station_id 1개(아니면 INVALID_PARAMETER), query 비어있지 않음.
-   일일 생성 횟수 rl:gen:user:{id} < ratelimit.user_daily(=3), 초과 시 429       [D-9]
+   일일 생성 횟수 COUNT(recommendation_requests, served_from=LLM, 오늘 KST) < ratelimit.user_daily(=3), 초과 시 429  [D-9]
 2. 질의어 분류(LLM, 저비용 모델): query → parsed_input
    { theme_tags[], budget_tier, companion_type, head_count }                     [D-8]
    └ 분류 결과 빈 항목은 사용자 preferred_* 로 보정
    └ 서비스 무관/분류 불가 → INVALID_QUERY, 종료
-3. 캐시 조회(Redis): key = hash(station_id + 정규화 parsed_input)
+3. 캐시 조회(DB): key = hash(station_id + 정규화 parsed_input) → `course_cache` 테이블 조회
    └ 히트 → 캐시 반환(served_from=CACHE, 한도 미차감), 단 7단계 유사 코스는 최신 조회, 종료
 4. 후보 장소 조회: PostGIS ST_DWithin로 역 5km 반경 + theme_tags/budget 필터 (F-01)
    └ exclude_place_ids 제외 (F-04, US-B3)
@@ -1015,7 +1025,7 @@ GET /v1/courses/{course_id}
 ## 11. 보안 / 개인정보 체크리스트
 
 - 토큰 교환·클라이언트 시크릿은 **서버에서만** 처리, 클라이언트 미노출.
-- JWT: access 단기(30분) + refresh 회전(rotation), refresh는 Redis 저장/무효화(6.2.11). 재사용 감지 시 전 토큰 폐기.
+- JWT: access 단기(30분) + refresh 회전(rotation), refresh는 DB 저장/무효화(6.2.11). 재사용 감지 시 전 토큰 폐기.
 - 성별·출생연도 등 개인정보: 수집 목적 고지 + 분리 동의, 선택 입력, 미입력 허용.
 - 저장 공개 코스는 생성자 비식별.
 - 위치는 GPS 자동 수집 미사용(지도 탭 선택), 위치 정보는 URL 파라미터 미포함.
@@ -1025,7 +1035,7 @@ GET /v1/courses/{course_id}
 ### 11.1 탈퇴 시 개인정보 파기/익명화 (PIPA)
 - `DELETE /v1/users/me` → `status=WITHDRAWN`과 **동시에** 개인정보 컬럼 파기/익명화: `nickname`·`profile_image_url`·`email` 삭제, `gender/birth_year/dating_stage`·`oauth_id` 제거/비식별화.
 - `course_reviews`/`recommendation_requests`의 `user_id`는 통계 보존 필요 시 **익명화**(NULL/무의미 토큰). 리뷰 본문(댓글·링크)은 보존 정책에 따라 익명 처리.
-- Redis의 `rt:{user_id}:*` 일괄 폐기.
+- DB `refresh_tokens`에서 해당 `user_id` 레코드 일괄 폐기(revoked_at 설정).
 
 ### 11.2 외부 데이터 수집의 법적 리스크 (⚠️ 출시 전 필수, US-F4)
 - 카카오맵/로컬 데이터의 캐싱·크롤링은 약관·저작권·DB권 침해 소지(특히 상세 페이지 크롤링·상업적 재배포).
@@ -1068,7 +1078,7 @@ GET /v1/courses/{course_id}
 | `NAVER_MAP_CLIENT_ID` | (보류) 네이버 지도 Client ID | `TODO` |
 | `NAVER_MAP_CLIENT_SECRET` | (보류) 네이버 지도 Client Secret | `(secret)` |
 | `OPENWEATHER_API_KEY` | OpenWeatherMap Current Weather API 키(7.6b, D-17). 무료 티어 60 call/min. | `(secret)` |
-| `OPENWEATHER_CACHE_TTL_SEC` | 날씨 Redis 캐시 TTL(초). 기본 1800(30분). | `1800` |
+| `OPENWEATHER_CACHE_TTL_SEC` | 날씨 캐시 TTL(초). 기본 1800(30분). | `1800` |
 
 #### 12.3.1 크롤링 보강 파이프라인 (영업시간·가격 등 API 미제공 항목)
 | 키 | 설명 | 값 |
@@ -1118,8 +1128,7 @@ GET /v1/courses/{course_id}
 | `rds_db_name` | DB 이름 | `whatwedoin` |
 | `rds_username` | DB 마스터 유저 | `TODO` |
 | `rds_password` | DB 마스터 비밀번호 | `(secret)` |
-| `elasticache_node_type` | Redis 노드 타입 | `cache.t4g.micro` (dev) |
-| `acm_certificate_arn` | ALB/CloudFront TLS 인증서 ARN | `TODO` |
+| `acm_certificate_arn` | ALB TLS 인증서 ARN | `TODO` |
 | `route53_zone_id` | 도메인 호스팅 영역 ID | `TODO` |
 
 ### 12.7 시크릿 보관 위치
@@ -1141,3 +1150,4 @@ GET /v1/courses/{course_id}
 
 > **v2.0에서 해소된 결정**: 무료 재추천(D-9) · plan_type 폐기→통제 enum 테마(D-12·D-14) · companion_type 4종(D-7) · 피드백→통합 리뷰(D-11) · 코스 즉시 공개(D-10).
 > **v2.1(2026-06-25)에서 해소된 결정**: 베이지안 사전값 prior_mean=50/prior_count=5(D-18) · 테마 enum 12종 확정(D-14) · 리뷰 링크 안전성 검사 제거+신고 기능 추가(D-15) · IP 추가 방어 V2(D-19) · 날씨 API OpenWeatherMap·역 좌표 기반(D-17) · SEO 공개 페이지 연계(D-16).
+> **v2.3(2026-06-25)에서 해소된 결정**: Redis/ElastiCache 제거 → 캐시·레이트리밋·refresh 토큰 모두 PostgreSQL로 통합. AWS 인프라 ECS+RDS만 유지.
