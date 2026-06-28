@@ -1,0 +1,15 @@
+services:
+  backend:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    networks:
+      - whatwedoin-network
+
+networks:
+  whatwedoin-network:
+    external: true
