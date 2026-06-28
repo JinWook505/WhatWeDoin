@@ -1,6 +1,6 @@
 ---
-description: "Jira 티켓 시작: 이슈 조회 → 브랜치 생성 + In Progress 전환 → 구현 안내. 사용법: /ticket-start SCRUM-XX [feat|fix|chore]"
-allowed-tools: ["mcp__atlassian__getJiraIssue", "mcp__atlassian__transitionJiraIssue", "Bash"]
+description: "Jira 티켓 시작: 이슈 조회 -> 브랜치 생성 + In Progress 전환 -> 구현 + 커밋. 사용법: /ticket-start SCRUM-XX [feat|fix|chore]"
+allowed-tools: ["mcp__atlassian__getJiraIssue", "mcp__atlassian__transitionJiraIssue", "Bash", "Read", "Write", "Edit", "Glob", "Grep"]
 ---
 
 $ARGUMENTS에서 다음을 파싱하세요:
@@ -11,9 +11,8 @@ $ARGUMENTS에서 다음을 파싱하세요:
 
 `mcp__atlassian__getJiraIssue(issueIdOrKey: TICKET_KEY)` 호출.
 
-다음을 출력:
-- 티켓 제목
-- 설명
+다음을 확인합니다:
+- 티켓 제목 및 작업 설명
 - 인수조건 체크리스트 (`[ ]` / `[x]` 항목 전부)
 
 티켓 상태가 이미 "In Progress" 또는 "Done"이면 경고를 출력하고 계속할지 확인을 구하세요.
@@ -44,14 +43,21 @@ git checkout -b {BRANCH_TYPE}/SCRUM-{NUMBER}-{slug}
 
 `mcp__atlassian__transitionJiraIssue(issueIdOrKey: TICKET_KEY, transition: {id: "21"})`
 
-## Step 3 — 구현 + 커밋 안내
+## Step 3 — 구현 + 커밋
 
-티켓의 작업 순서와 인수조건을 바탕으로 구현해야 할 내용을 단계별로 정리해서 출력하세요.
-각 인수조건 항목을 충족하기 위한 구체적인 구현 포인트를 제시합니다.
+티켓의 작업 설명과 인수조건을 모두 충족하도록 **실제 코드를 직접 구현**합니다.
 
-커밋은 아래 형식으로 항목별로 나눠서 작성할 것을 안내합니다:
-```
-{BRANCH_TYPE}(SCRUM-{NUMBER}): <변경 내용 한 줄 요약>
+구현 원칙:
+- 티켓의 "작업 순서"가 있으면 그 순서대로 진행합니다
+- TDD가 명시된 경우 Red → Green 순서를 지킵니다 (테스트 먼저 작성 후 구현)
+- 인수조건의 모든 `[ ]` 항목이 충족되도록 구현합니다
+- 기존 코드베이스의 패턴과 컨벤션을 따릅니다
+
+구현이 완료되면 논리적 단위로 나눠 커밋합니다:
+
+```bash
+git add <파일>
+git commit -m "{BRANCH_TYPE}(SCRUM-{NUMBER}): <변경 내용 한 줄 요약>"
 ```
 
 ## Step 4 — 결과 출력
@@ -60,11 +66,15 @@ git checkout -b {BRANCH_TYPE}/SCRUM-{NUMBER}-{slug}
 브랜치 생성 : {브랜치명}
 티켓 상태  : In Progress
 
-구현 체크리스트:
-  [ ] <인수조건 항목 1> — <구현 포인트>
-  [ ] <인수조건 항목 2> — <구현 포인트>
+구현 완료 항목:
+  [x] <인수조건 항목 1>
+  [x] <인수조건 항목 2>
   ...
 
-커밋 형식: {BRANCH_TYPE}(SCRUM-{NUMBER}): <내용>
-완료 후: /ticket-done 실행으로 PR 생성 및 티켓 종료
+커밋 목록:
+  - {BRANCH_TYPE}(SCRUM-{NUMBER}): <커밋 메시지 1>
+  - {BRANCH_TYPE}(SCRUM-{NUMBER}): <커밋 메시지 2>
+  ...
+
+완료 후: /ticket-done 실행으로 테스트 검증 + PR 생성 및 티켓 종료
 ```
