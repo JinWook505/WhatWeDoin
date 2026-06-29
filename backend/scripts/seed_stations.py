@@ -21,10 +21,16 @@ from dataclasses import dataclass
 @dataclass
 class StationRow:
     name: str
-    line: str
+    line: str      # 노선 — external_id 생성에만 사용 (DB 컬럼 없음)
     lat: float
     lng: float
     is_supported: bool
+
+    @property
+    def external_id(self) -> str:
+        """stable unique ID per station+line (kakao source 기준)"""
+        normalized = self.line.replace(" ", "_")
+        return f"{self.name}_{normalized}"
 
 
 # fmt: off
@@ -124,32 +130,37 @@ async def seed(database_url: str | None = None) -> None:
     # asyncpg expects postgresql:// (no driver suffix)
     url = url.replace("postgresql+asyncpg://", "postgresql://")
 
-    print(f"Connecting to DB … ({url.split('@')[-1]})")
+    print(f"Connecting to DB: {url.split('@')[-1]}")
     conn = await asyncpg.connect(url)
     try:
-        upserted = 0
+        # 중복 실행 안전: KAKAO 소스 기존 시드 행 삭제 후 재삽입
+        existing = await conn.fetchval(
+            "SELECT COUNT(*) FROM stations WHERE external_source = 'KAKAO'"
+        )
+        if existing:
+            await conn.execute("DELETE FROM stations WHERE external_source = 'KAKAO'")
+            print(f"  기존 시드 데이터 {existing}행 삭제 후 재적재")
+
         for s in STATIONS:
             await conn.execute(
                 """
-                INSERT INTO stations (station_name, line, geom, is_supported)
+                INSERT INTO stations (external_source, external_id, name, lat, lng, geom, is_supported)
                 VALUES (
+                    'KAKAO',
                     $1,
                     $2,
-                    ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography,
+                    $3,
+                    $4,
+                    ST_SetSRID(ST_MakePoint($4, $3), 4326)::geography,
                     $5
                 )
-                ON CONFLICT (station_name, line) DO UPDATE SET
-                    geom         = EXCLUDED.geom,
-                    is_supported = EXCLUDED.is_supported,
-                    updated_at   = NOW()
                 """,
+                s.external_id,
                 s.name,
-                s.line,
-                s.lng,   # ST_MakePoint(lng, lat) — X=경도, Y=위도
                 s.lat,
+                s.lng,   # ST_MakePoint(lng, lat) — X=경도, Y=위도
                 s.is_supported,
             )
-            upserted += 1
 
         # ── 적재 결과 검증 ─────────────────────────────────────────────────
         db_total = await conn.fetchval("SELECT COUNT(*) FROM stations")
@@ -157,29 +168,29 @@ async def seed(database_url: str | None = None) -> None:
             "SELECT COUNT(*) FROM stations WHERE is_supported = true"
         )
 
-        print(f"✅ Upserted {upserted} rows → DB: {db_total} total, {db_supported} supported")
+        print(f"[OK] 적재 완료 -> 전체 {db_total}개, is_supported=true {db_supported}개")
 
         if db_supported < MVP_SUPPORTED_COUNT:
             print(
-                f"⚠️  Expected {MVP_SUPPORTED_COUNT} supported stations, got {db_supported}",
+                f"[WARN] 지원 역 {MVP_SUPPORTED_COUNT}개 기대, {db_supported}개 적재됨",
                 file=sys.stderr,
             )
             sys.exit(1)
 
-        # MVP 지원 역 목록 출력
+        # 지원 역 목록 출력
         rows = await conn.fetch(
             """
-            SELECT station_name, line,
+            SELECT name,
                    ST_Y(geom::geometry) AS lat,
                    ST_X(geom::geometry) AS lng
             FROM stations
             WHERE is_supported = true
-            ORDER BY station_name
+            ORDER BY name
             """
         )
         print("\n지원 역 목록 (is_supported=true):")
         for r in rows:
-            print(f"  {r['station_name']} ({r['line']})  lat={r['lat']:.4f}, lng={r['lng']:.4f}")
+            print(f"  {r['name']}  lat={r['lat']:.4f}, lng={r['lng']:.4f}")
 
     finally:
         await conn.close()

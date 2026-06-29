@@ -40,3 +40,9 @@ def test_station_row_fields():
         assert s.name
         assert s.line
         assert isinstance(s.is_supported, bool)
+        assert s.external_id
+
+
+def test_external_ids_are_unique():
+    ids = [s.external_id for s in STATIONS]
+    assert len(ids) == len(set(ids)), "external_id 중복 발생"
