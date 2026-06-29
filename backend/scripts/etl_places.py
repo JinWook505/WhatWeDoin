@@ -10,7 +10,7 @@ ETL: 카카오 로컬 API → places 테이블
 
 환경변수:
     KAKAO_REST_API_KEY   카카오 REST API 키 (필수)
-    DATABASE_URL         PostgreSQL 연결 URL (asyncpg 형식)
+    DATABASE_URL         PostgreSQL 연결 URL
 """
 
 import argparse
@@ -19,7 +19,6 @@ import json
 import logging
 import os
 import sys
-import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -36,11 +35,10 @@ log = logging.getLogger(__name__)
 KAKAO_API_URL = "https://dapi.kakao.com/v2/local/search/category.json"
 
 CATEGORIES: dict[str, str] = {
-    "FD6": "음식점",
+    "FD6": "음식점",   # 술집 포함 (Kakao CB4 코드 없음, FD6 하위 분류)
     "CE7": "카페",
     "CT1": "문화시설",
     "AT4": "관광명소",
-    "CB4": "술집",
 }
 
 RADIUS_METERS = 7000
@@ -50,7 +48,7 @@ RATE_LIMIT_SEC = 1.0
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 2.0
 
-COVERAGE_MIN_PLACES = 1  # 역당 최소 장소 수
+COVERAGE_MIN_PLACES = 1
 
 
 async def fetch_category_places(
@@ -61,7 +59,7 @@ async def fetch_category_places(
     category_code: str,
     page: int = 1,
 ) -> tuple[list[dict], bool]:
-    """카카오 로컬 카테고리 검색 API 호출. (문서 목록, is_end) 반환."""
+    """카카오 로컬 카테고리 검색 API 호출. (documents, is_end) 반환."""
     for attempt in range(MAX_RETRIES):
         try:
             resp = await client.get(
@@ -83,7 +81,10 @@ async def fetch_category_places(
         except (httpx.HTTPStatusError, httpx.RequestError) as exc:
             if attempt < MAX_RETRIES - 1:
                 delay = RETRY_BASE_DELAY * (2**attempt)
-                log.warning("API 오류 (시도 %d/%d): %s — %.1fs 후 재시도", attempt + 1, MAX_RETRIES, exc, delay)
+                log.warning(
+                    "API 오류 (시도 %d/%d): %s — %.1fs 후 재시도",
+                    attempt + 1, MAX_RETRIES, exc, delay,
+                )
                 await asyncio.sleep(delay)
             else:
                 log.error("API 최종 실패: %s", exc)
@@ -94,7 +95,6 @@ async def fetch_category_places(
 async def fetch_all_places_for_station(
     client: httpx.AsyncClient,
     api_key: str,
-    station_id: str,
     station_name: str,
     lng: float,
     lat: float,
@@ -111,13 +111,18 @@ async def fetch_all_places_for_station(
             if page > 1:
                 await asyncio.sleep(RATE_LIMIT_SEC)
 
-            docs, is_end = await fetch_category_places(client, api_key, lng, lat, category_code, page)
+            docs, is_end = await fetch_category_places(
+                client, api_key, lng, lat, category_code, page
+            )
             page_places.extend(docs)
 
             if is_end:
                 break
 
-        log.info("  [%s] %s(%s): %d건", station_name, category_name, category_code, len(page_places))
+        log.info(
+            "  [%s] %s(%s): %d건",
+            station_name, category_name, category_code, len(page_places),
+        )
         results.extend(page_places)
 
         await asyncio.sleep(RATE_LIMIT_SEC)
@@ -125,48 +130,53 @@ async def fetch_all_places_for_station(
     return results
 
 
-def build_place_row(doc: dict, station_id: str) -> dict:
+def build_place_row(doc: dict) -> dict:
     """카카오 API 응답 document → places 테이블 행 딕셔너리."""
-    lng = float(doc["x"])
-    lat = float(doc["y"])
     return {
-        "id": str(uuid.uuid4()),
-        "external_source": "kakao",
+        "external_source": "KAKAO",
         "external_id": doc["id"],
         "name": doc["place_name"],
-        "category_code": doc.get("category_group_code", ""),
+        "category": doc.get("category_group_code", ""),
         "address": doc.get("road_address_name") or doc.get("address_name", ""),
-        "lng": lng,
-        "lat": lat,
-        "business_hours": json.dumps({}),  # 카카오 기본 API에는 영업시간 없음
+        "lat": float(doc["y"]),
+        "lng": float(doc["x"]),
+        "phone": doc.get("phone") or "",
+        "map_url": doc.get("place_url") or "",
+        "business_hours": json.dumps({}),
         "status": "OPEN",
         "last_synced_at": datetime.now(timezone.utc).isoformat(),
-        "nearest_station_id": station_id,
     }
 
 
+# ST_MakePoint(lng, lat) — PostGIS 인자 순서는 x(경도), y(위도)
 UPSERT_SQL = """
 INSERT INTO places (
-    id, external_source, external_id, name, category_code, address,
-    geom, business_hours, status, last_synced_at, nearest_station_id
+    external_source, external_id, name, category, address,
+    lat, lng, geom,
+    phone, map_url, business_hours, status, last_synced_at
 ) VALUES (
-    $1::uuid, $2, $3, $4, $5, $6,
-    ST_SetSRID(ST_MakePoint($7, $8), 4326)::geography,
-    $9::jsonb, $10::place_status, $11::timestamptz, $12::uuid
+    $1::oauth_provider, $2, $3, $4, $5,
+    $6, $7, ST_SetSRID(ST_MakePoint($7, $6), 4326)::geography,
+    $8, $9, $10::jsonb, $11, $12::timestamptz
 )
 ON CONFLICT (external_source, external_id) DO UPDATE SET
-    name             = EXCLUDED.name,
-    category_code    = EXCLUDED.category_code,
-    address          = EXCLUDED.address,
-    geom             = EXCLUDED.geom,
-    business_hours   = EXCLUDED.business_hours,
-    status           = EXCLUDED.status,
-    last_synced_at   = EXCLUDED.last_synced_at,
-    nearest_station_id = EXCLUDED.nearest_station_id
+    name           = EXCLUDED.name,
+    category       = EXCLUDED.category,
+    address        = EXCLUDED.address,
+    lat            = EXCLUDED.lat,
+    lng            = EXCLUDED.lng,
+    geom           = EXCLUDED.geom,
+    phone          = EXCLUDED.phone,
+    map_url        = EXCLUDED.map_url,
+    business_hours = EXCLUDED.business_hours,
+    status         = EXCLUDED.status,
+    last_synced_at = EXCLUDED.last_synced_at
 """
 
 
-async def upsert_places(conn: asyncpg.Connection, rows: list[dict], dry_run: bool) -> int:
+async def upsert_places(
+    conn: asyncpg.Connection, rows: list[dict], dry_run: bool
+) -> int:
     """장소 목록을 places 테이블에 upsert. 처리된 행 수 반환."""
     if dry_run:
         log.info("  [dry-run] %d건 upsert 생략", len(rows))
@@ -176,58 +186,62 @@ async def upsert_places(conn: asyncpg.Connection, rows: list[dict], dry_run: boo
     for row in rows:
         await conn.execute(
             UPSERT_SQL,
-            row["id"],
             row["external_source"],
             row["external_id"],
             row["name"],
-            row["category_code"],
+            row["category"],
             row["address"],
-            row["lng"],
             row["lat"],
+            row["lng"],
+            row["phone"],
+            row["map_url"],
             row["business_hours"],
             row["status"],
             row["last_synced_at"],
-            row["nearest_station_id"],
         )
         count += 1
     return count
 
 
 GET_SUPPORTED_STATIONS_SQL = """
-SELECT id::text, name, ST_X(geom::geometry) AS lng, ST_Y(geom::geometry) AS lat
+SELECT station_id, name, lat, lng
 FROM stations
 WHERE is_supported = true
 ORDER BY name
 """
 
 
-async def get_supported_stations(conn: asyncpg.Connection, station_ids: Optional[list[str]] = None) -> list[dict]:
+async def get_supported_stations(
+    conn: asyncpg.Connection, station_ids: Optional[list[str]] = None
+) -> list[dict]:
     """DB에서 지원 역 목록 조회. station_ids 지정 시 해당 역만 반환."""
     rows = await conn.fetch(GET_SUPPORTED_STATIONS_SQL)
     stations = [dict(r) for r in rows]
 
     if station_ids:
-        id_set = set(station_ids)
-        stations = [s for s in stations if s["id"] in id_set]
+        id_set = {int(i) for i in station_ids}
+        stations = [s for s in stations if s["station_id"] in id_set]
         if not stations:
-            log.error("지정한 station_ids에 해당하는 지원 역이 없습니다: %s", station_ids)
+            log.error(
+                "지정한 station_ids에 해당하는 지원 역이 없습니다: %s", station_ids
+            )
             sys.exit(1)
 
     return stations
 
 
 COVERAGE_SQL = """
-SELECT s.id::text, s.name, COUNT(p.id) AS place_count
+SELECT s.station_id, s.name, COUNT(p.place_id) AS place_count
 FROM stations s
-LEFT JOIN places p ON p.nearest_station_id = s.id
+LEFT JOIN places p ON ST_DWithin(s.geom, p.geom, 5000)
 WHERE s.is_supported = true
-GROUP BY s.id, s.name
+GROUP BY s.station_id, s.name
 ORDER BY place_count ASC
 """
 
 
 async def verify_coverage(conn: asyncpg.Connection) -> bool:
-    """모든 지원 역이 최소 COVERAGE_MIN_PLACES개 이상의 장소를 가지는지 검증."""
+    """지원 역 5km 반경에 최소 COVERAGE_MIN_PLACES개 이상의 장소가 있는지 검증."""
     rows = await conn.fetch(COVERAGE_SQL)
     ok = True
     for row in rows:
@@ -248,14 +262,18 @@ async def main(args: argparse.Namespace) -> None:
     if not api_key and args.dry_run:
         log.warning("KAKAO_REST_API_KEY 미설정 — dry-run 모드이므로 API 호출 없이 진행합니다.")
 
-    db_url = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/whatwedoin")
-    # asyncpg는 postgresql:// 스킴 사용
+    db_url = os.environ.get(
+        "DATABASE_URL",
+        "postgresql://postgres:postgres@localhost:5432/whatwedoin",
+    )
     db_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
 
     categories = args.categories.split(",") if args.categories else list(CATEGORIES.keys())
     invalid = [c for c in categories if c not in CATEGORIES]
     if invalid:
-        log.error("유효하지 않은 카테고리 코드: %s (허용: %s)", invalid, list(CATEGORIES.keys()))
+        log.error(
+            "유효하지 않은 카테고리 코드: %s (허용: %s)", invalid, list(CATEGORIES.keys())
+        )
         sys.exit(1)
 
     station_ids = args.station_ids.split(",") if args.station_ids else None
@@ -271,7 +289,10 @@ async def main(args: argparse.Namespace) -> None:
 
         async with httpx.AsyncClient() as client:
             for station in stations:
-                log.info("[%s] 장소 수집 시작 (lng=%.5f, lat=%.5f)", station["name"], station["lng"], station["lat"])
+                log.info(
+                    "[%s] 장소 수집 시작 (lng=%.5f, lat=%.5f)",
+                    station["name"], station["lng"], station["lat"],
+                )
 
                 if args.dry_run and not api_key:
                     log.info("  [dry-run] API 호출 생략")
@@ -280,14 +301,13 @@ async def main(args: argparse.Namespace) -> None:
                 docs = await fetch_all_places_for_station(
                     client,
                     api_key,
-                    station["id"],
                     station["name"],
                     station["lng"],
                     station["lat"],
                     categories,
                 )
 
-                rows = [build_place_row(doc, station["id"]) for doc in docs]
+                rows = [build_place_row(doc) for doc in docs]
                 upserted = await upsert_places(conn, rows, args.dry_run)
                 total_upserted += upserted
                 log.info("  → %d건 upsert 완료", upserted)
@@ -298,7 +318,7 @@ async def main(args: argparse.Namespace) -> None:
             log.info("=== 커버리지 검증 ===")
             ok = await verify_coverage(conn)
             if not ok:
-                log.warning("일부 역의 장소 데이터가 부족합니다. 반경 확장 또는 카테고리 추가를 고려하세요.")
+                log.warning("일부 역의 장소 데이터가 부족합니다.")
                 sys.exit(2)
             log.info("커버리지 검증 통과")
     finally:
@@ -316,7 +336,7 @@ def parse_args() -> argparse.Namespace:
         "--station-ids",
         metavar="ID1,ID2,...",
         default="",
-        help="처리할 역 ID 목록 (쉼표 구분, 기본값: 전체 지원 역)",
+        help="처리할 역 station_id 목록 (쉼표 구분, 기본값: 전체 지원 역)",
     )
     parser.add_argument(
         "--categories",
