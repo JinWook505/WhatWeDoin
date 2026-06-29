@@ -288,6 +288,34 @@ async def verify_coverage(conn: asyncpg.Connection) -> bool:
     return ok
 
 
+MARK_STALE_SQL = """
+UPDATE places SET status = 'UNKNOWN'
+WHERE status = 'OPEN'
+  AND category = ANY($1::text[])
+  AND last_synced_at < $2::timestamptz
+  AND EXISTS (
+      SELECT 1 FROM stations s
+      WHERE s.is_supported = true
+        AND ST_DWithin(s.geom, places.geom, 7000)
+  )
+"""
+
+
+async def mark_stale_places(
+    conn: asyncpg.Connection,
+    categories: list[str],
+    etl_started_at: datetime,
+    dry_run: bool,
+) -> int:
+    """이번 ETL에서 갱신되지 않은 장소(폐업·이전 추정)를 UNKNOWN으로 마킹."""
+    if dry_run:
+        log.info("[dry-run] stale 마킹 생략")
+        return 0
+    result = await conn.execute(MARK_STALE_SQL, categories, etl_started_at)
+    count = int(result.split()[-1])
+    return count
+
+
 async def main(args: argparse.Namespace) -> None:
     api_key = os.environ.get("KAKAO_REST_API_KEY", "")
     if not api_key and not args.dry_run:
@@ -311,6 +339,9 @@ async def main(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     station_ids = args.station_ids.split(",") if args.station_ids else None
+
+    # ETL 시작 시각 기록 — 이후 갱신되지 않은 장소를 stale로 판단하는 기준
+    etl_started_at = datetime.now(timezone.utc)
 
     log.info("=== ETL 시작 | dry_run=%s | categories=%s ===", args.dry_run, categories)
 
@@ -349,6 +380,20 @@ async def main(args: argparse.Namespace) -> None:
         log.info("=== ETL 완료: 총 %d건 upsert ===", total_upserted)
 
         if not args.dry_run:
+            # 이번 ETL에서 갱신되지 않은 장소 → UNKNOWN 마킹 (폐업·이전 추정)
+            # station_ids 지정 시 전체 역을 처리하지 않았으므로 stale 마킹 생략
+            if not station_ids:
+                stale_count = await mark_stale_places(
+                    conn, categories, etl_started_at, args.dry_run
+                )
+                if stale_count:
+                    log.warning(
+                        "=== stale 장소 %d건 → status=UNKNOWN (폐업·이전 추정, 월 배치에서 재검증) ===",
+                        stale_count,
+                    )
+                else:
+                    log.info("=== stale 장소 없음 ===")
+
             log.info("=== 커버리지 검증 ===")
             ok = await verify_coverage(conn)
             if not ok:
