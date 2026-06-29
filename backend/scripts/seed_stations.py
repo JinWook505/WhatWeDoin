@@ -217,7 +217,7 @@ async def seed(database_url: str | None = None) -> None:
         )
         print("\n지원 역 목록 (is_supported=true):")
         for r in rows:
-            lines_str = ", ".join(r["lines"]) if r["lines"] else "-"
+            lines_str = ", ".join(l for l in r["lines"] if l is not None) if r["lines"] else "-"
             print(f"  {r['name']}  lat={r['lat']:.4f}, lng={r['lng']:.4f}  노선={lines_str}")
 
     finally:
