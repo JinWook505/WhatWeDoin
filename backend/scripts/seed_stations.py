@@ -137,6 +137,13 @@ async def seed(database_url: str | None = None) -> None:
     print(f"Connecting to DB: {url.split('@')[-1]}")
     conn = await asyncpg.connect(url)
     try:
+        # STATIONS 목록에 없는 역 제거 (연남동처럼 삭제된 역이 DB에 남지 않도록)
+        known_external_ids = [s.external_id for s in STATIONS]
+        await conn.execute(
+            "DELETE FROM stations WHERE external_source = 'KAKAO' AND external_id != ALL($1::text[])",
+            known_external_ids,
+        )
+
         upserted = 0
         lines_upserted = 0
 
