@@ -2,8 +2,8 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | **v2.2** — PRD |
-| 작성일 | 2026-06-24 |
+| 문서 버전 | **v2.4** — PRD |
+| 작성일 | 2026-06-29 |
 | 관련 문서 | 없음  |
 | 범위 | 제품 개요 / 사용자 플로우 / 기능요구(User Story·인수조건) / 비기능요구 / 기술스택 / DB / API / 인증 / 추천엔진 / 보안 / 설정값 |
 | 상태 | MVP 확정. 단일 역 + 질의어(자연어) 기반 추천으로 개편 |
@@ -11,6 +11,7 @@
 ### 변경 이력
 | 버전 | 일자 | 변경 |
 |---|---|---|
+| v2.4 | 2026-06-29 | **카카오 API 한계 반영 및 LLM 전략 수정.** ① `places` 테이블에 `theme_tags` 컬럼 추가(카카오 API 미제공 → ETL 시 카테고리 코드→enum 매핑으로 채움). ② 카카오 API 평점·영업시간 미제공 정책 명시(영업시간 크롤링 불가 → 사용자 제보만 허용). ③ `LLM_MODEL_PRIMARY`: `claude-opus-4-8` → `claude-sonnet-4-6`(비용 최적화). ④ LLM Provider 추상화 인터페이스 설계 추가(OpenAI 등 타 공급자 전환 대비). ⑤ `station_lines` 테이블 시딩 필요 명시. ⑥ `stations` 시딩 upsert 정책 명시 + 지방 도시(대구·부산 등) 확장 고려. ⑦ **플레이스 단위 리뷰·영업시간 제보 로직(playwright·소형모델·보상체계) → V2 명시** (Out 섹션 추가). |
 | v2.3 | 2026-06-25 | **인프라 간소화.** Redis/ElastiCache·S3+CloudFront 제거. 캐시·레이트리밋·refresh 토큰·날씨 캐시 모두 PostgreSQL로 처리. AWS 인프라: ECS + RDS + ALB 유지. 프론트는 Vercel(또는 정적 호스팅). DB 스키마 관리: Alembic 유지. |
 | v2.2 | 2026-06-25 | **백엔드 스택 변경.** Java 21 + Spring Boot → **Python 3.12 + FastAPI**. Langfuse Python SDK 네이티브 지원이 주된 이유. SQLAlchemy 2.x(async) + asyncpg, Alembic(마이그레이션), uv(패키지 관리), prometheus-fastapi-instrumentator(메트릭). `/actuator/health` → `GET /health`. |
 | v2.1 | 2026-06-25 | **미해결 결정 해소.** ① `rating.prior_mean=50`(중립값, D-18). ② `theme_tag` enum 12종 확정(D-14): FOOD/CAFE/BAR/BOARD_GAME/KARAOKE/ARCADE/PARK/CULTURE/SHOPPING/NIGHT_VIEW/MOVIE/ACTIVITY. ③ 리뷰 링크 안전성 검사 제거, `rel=nofollow`만 적용 + 리뷰 신고 기능(`course_review_reports`) 추가(D-15). ④ IP 리뷰 추가 어뷰징 방어(캡차 등) → V2(D-19). ⑤ 날씨 placeholder: OpenWeatherMap Current API(무료) + 역 좌표 기반, 30분 DB 캐시(D-17). ⑥ 코스 공유: SEO 공개 페이지(`/courses/{id}`) SSR + OG 태그, 이미지 공유는 V2(D-16). |
@@ -51,7 +52,7 @@
 
 ### 1.5 MVP 범위 (In / Out)
 **In (P0~P1)**: 지도/검색 기반 **단일 역 선택**, **질의어(자연어) 입력 + 동적 placeholder**, **로그인 사용자** 대상 AI 플랜 추천(하루 3회 무료) + **유사 테마 고득점 코스 3개 동반**, 생성 코스 **전부 즉시 공개·DB 저장**, 플랜 결과 화면, **100점·5단위 점수 + 댓글 + 링크 통합 리뷰**(회원 1회/비로그인 IP) + **베이지안 평균 랭킹**, 메인에서 역·테마·인원·예산 조건 저장 코스 탐색, 카카오 로그인·온보딩·마이페이지·탈퇴, 레이트리밋(비용 방어), 데이터 시딩/신선도 배치.
-**Out (V2+)**: 다중 역 경유 플랜·역간 거리 검증, 출구별 만남 지점, 모바일 앱(React Native), 네이버 데이터 소스, 명시적 시간대(점심/저녁) 선택 UI(질의어로는 반영), 이미지 공유(OG 이미지 자동생성), 리뷰 신고 자동 숨김·캡차 등 추가 어뷰징 방어, 역 탐험 누적 기록(지나간 역 컬렉션), 무료 재추천(regenerate).
+**Out (V2+)**: 다중 역 경유 플랜·역간 거리 검증, 출구별 만남 지점, 모바일 앱(React Native), 네이버 데이터 소스, 명시적 시간대(점심/저녁) 선택 UI(질의어로는 반영), 이미지 공유(OG 이미지 자동생성), 리뷰 신고 자동 숨김·캡차 등 추가 어뷰징 방어, 역 탐험 누적 기록(지나간 역 컬렉션), 무료 재추천(regenerate), **플레이스(장소) 단위 리뷰**(코스 리뷰와 별도 `place_reviews` 테이블), **영업시간 제보 로직**(사용자 제보 시 playwright 검증·소형 분류모델·보상체계 — 카카오 API 미제공 항목 크롤링 불가로 인한 대안).
 
 ### 1.6 핵심 정책 결정 로그
 | # | 결정 | 비고 |
@@ -310,6 +311,8 @@
 - [ ] Given 서비스 오픈 전, When ETL을 수행하면, Then 지원 역 반경(5~7km) 장소가 `places`에 적재된다(카카오 로컬 API 기본 메타 + 보강).
 - [ ] Given 미적재 역, When 노출하면, Then `is_supported=false`로 막혀 `STATION_NOT_SUPPORTED`로 안내된다.
 - [ ] Given 동일 장소 재적재, When upsert하면, Then `(external_source, external_id)` UNIQUE로 중복 없이 갱신된다.
+- [ ] Given 역 데이터 시딩, When `stations` 및 `station_lines`를 적재하면, Then `(external_source, external_id)` 기준 **upsert**로 처리되어 재실행 시 중복 없이 갱신된다(지방 도시 확장 시 동일 스크립트 재실행으로 대응).
+- [ ] Given `station_lines` 미적재 상태, When `GET /v1/stations`를 호출하면, Then `lines` 필드가 빈 배열로 반환되어 노선 정보가 표시되지 않는다 — 시딩 시 반드시 함께 적재해야 한다.
 
 #### US-F2. 월 1회 신선도 배치 & 폐업 처리 — **P1**
 - [ ] Given `last_synced_at` 30일 초과, When 월 1회 배치를 돌리면, Then 해당 장소부터 재동기화되고 `last_synced_at`이 갱신된다.
@@ -375,7 +378,7 @@
 | **모바일 클라이언트 (2차)** | React Native (Expo) | 웹 검증 후 확장. 웹과 도메인 타입(TS) 공유 |
 | **백엔드 API** | Python 3.12 + FastAPI | Langfuse Python SDK 네이티브 지원이 핵심 선정 이유. `async/await`(asyncio)로 LLM·외부 API I/O 처리. SQLAlchemy 2.x(async) + asyncpg |
 | **메인 DB** | PostgreSQL + PostGIS | 역 5km 반경 검색을 DB 레벨에서 처리(핵심). 트랜잭션 안정성 |
-| **LLM** | Claude API (Anthropic) | 코스 조합/설명 생성. 단계적 모델 전략(저비용 필터 + 고급 톤) |
+| **LLM** | Claude API (Anthropic) | 코스 조합/설명 생성. 단계적 모델 전략(저비용 필터 + 고급 톤). **Provider 추상화 인터페이스** 경유(OpenAI 등 타 공급자 전환 대비 — 12.4 참조) |
 | **지도 렌더링** | 카카오맵 JS SDK | 역 마커·코스 동선 표시(웹 1차) |
 | **장소 데이터 소스** | 카카오 로컬 REST API 1차 / 크롤링 보조 | 기본 메타는 API(무료 쿼터), 영업시간·가격은 크롤링 보강 후 `places` 캐싱 |
 | **인증** | 카카오 OAuth 2.0(단일) + 자체 JWT | 카카오톡 단일 간편로그인. 세션은 자체 JWT. 비로그인도 메인 기능 전부 사용 |
@@ -468,6 +471,7 @@ CREATE TABLE station_lines (                            -- 환승 노선 (N:M)
 );
 ```
 > 자체 `station_id` PK로 외부 의존도를 낮추고, `external_id`(+출처)로 매핑. `geom`은 역 중심 단일 1점(D-4). 출구 단위는 V2 표시 전용.
+> **시딩 정책**: `stations` 적재는 `(external_source, external_id)` 기준 **upsert**로 처리(중복 방지·재적재 안전). 서울 외 지방 도시(대구·부산 등) 확장 시 동일 스크립트 재실행으로 대응 가능하도록 설계. `station_lines`는 `GET /v1/stations` 응답의 `lines` 필드 소스로, **초기 시딩 시 반드시 함께 적재**해야 한다(미적재 시 노선 정보 빈값으로 노출).
 
 #### 6.2.4 `courses` — 코스 (생성 즉시 공개)
 ```sql
@@ -550,7 +554,7 @@ CREATE INDEX idx_reviews_course ON course_reviews (course_id, created_at DESC);
 > - **베이지안 평균**: `bayesian_score = (C·m + rating_sum)/(C + rating_count)` (m=`rating.prior_mean`, C=`rating.prior_count`). 메인/유사 코스 랭킹에 사용.
 > - **비로그인 IP 식별**: `ip_hash`는 원문 IP를 해시/마스킹한 값만 저장(11장). 스팸은 `ratelimit.review_ip_daily`로 방어.
 > - **로그인 전환 병합(6.6)**: 비로그인(`ip_hash`) 리뷰를 로그인 시 `user_id`로 승격하되 이미 user 리뷰가 있으면 user 우선 중복 제거.
-> - **place 단위 피드백 제거**: 장소 단위 👍/👎(구 `place_feedback`)는 MVP에서 제외. 장소 제외는 재생성 시 `exclude_place_ids`(US-B3)로 대체.
+> - **place 단위 리뷰 → V2**: 장소 단위 리뷰(`place_reviews`)는 V2로 이관. MVP에서는 코스 단위 리뷰만 제공. 장소 제외는 재생성 시 `exclude_place_ids`(US-B3)로 대체.
 > - **리뷰 링크**: 저장만 하며 도메인 화이트리스트·안전성 검사 없음(D-15). 클라이언트에서 `rel="nofollow noopener"` 처리.
 
 #### 6.2.6b `course_review_reports` — 리뷰 신고 (D-15)
@@ -627,6 +631,7 @@ CREATE TABLE places (
     map_url         TEXT,
     phone           VARCHAR(30),
     thumbnail_url   TEXT,
+    theme_tags      theme_tag[] DEFAULT '{}',           -- ETL 시 카카오 카테고리 코드 → enum 매핑(카카오 API 미제공, 자동 분류)
     status          VARCHAR(10) DEFAULT 'OPEN',         -- OPEN / CLOSED / UNKNOWN
     last_synced_at  TIMESTAMPTZ,
     created_at      TIMESTAMPTZ DEFAULT now(),
@@ -635,10 +640,12 @@ CREATE TABLE places (
 );
 CREATE INDEX idx_places_geom     ON places USING GIST (geom);
 CREATE INDEX idx_places_category ON places (category);
+CREATE INDEX idx_places_theme    ON places USING GIN (theme_tags);  -- 후보 조회 시 theme_tag 필터용
 ```
 > - 추천 4단계(후보 조회)는 `ST_DWithin`으로 역 반경 후보를 뽑되 `status='CLOSED'` 제외.
 > - **신선도(D-6)**: ① 월 1회 배치로 `last_synced_at` 30일 초과분 재동기화, 폐업 시 `status='CLOSED'`. ② 사용자 제보(visit-survey `visited=false`)는 재검증 큐 우선순위 상향. ③ 가격은 범주형 `price_range`만 유지.
-> - **ETL**: 기본 메타는 카카오 로컬 REST API(`external_source='KAKAO'`). API 미제공 항목(`business_hours`·`price_range`·`thumbnail_url`)은 크롤링 보강(robots.txt·약관 준수, 레이트 제한, `last_synced_at` 기록). 동일 장소는 `(external_source, external_id)` UNIQUE upsert.
+> - **ETL**: 기본 메타는 카카오 로컬 REST API(`external_source='KAKAO'`). 동일 장소는 `(external_source, external_id)` UNIQUE upsert.
+> - **카카오 API 미제공 항목 처리 정책**: 카카오 로컬 API는 **평점·영업시간을 정책상 제공하지 않으며 크롤링으로도 수집 불가**. 구체적으로: ① `business_hours` — 카카오 API 미제공, 크롤링 불가. **사용자 제보(`visit-survey`)로만 업데이트**하며, 미확인 시 `null` 유지 후 "영업시간 미확인" 안내 표시. ② `price_range` — API 미제공. 크롤링 보강 가능 여부는 법무 확인 후 결정(11.2). ③ `thumbnail_url` — API 미제공. 크롤링 보강 가능 여부 법무 확인 필요. ④ `theme_tags` — API 미제공. ETL 시 카카오 `category_group_code`(예: `FD6`, `CE7`, `AT4`)를 `theme_tag` enum으로 매핑하는 **카테고리 매핑 테이블**로 자동 분류(매핑 불가 항목은 빈 배열 유지).
 > - **콜드스타트**: recommend는 `places`에서만 후보를 뽑으므로 오픈 전 지원 역 반경(5~7km) 사전 적재 필수(US-F1). 미적재 역은 `is_supported=false`.
 
 #### 6.2.10 `course_places` — 코스 구성 장소 (동선 순서)
@@ -1090,14 +1097,25 @@ GET /v1/courses/{course_id}
 
 > **법무·운영 주의**: 크롤링은 `robots.txt`·이용약관 준수, 레이트 제한 필수. 상업적 재사용 범위는 출시 전 법무 검토(11.2). 카카오 로컬 API 무료 쿼터 초과 시 유료 전환 또는 캐시 TTL 연장으로 호출량 통제.
 
-### 12.4 LLM (Anthropic Claude)
+### 12.4 LLM (Anthropic Claude — 기본 공급자)
 | 키 | 설명 | 값 |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Claude API 키 (https://console.anthropic.com) | `(secret)` |
-| `LLM_MODEL_PRIMARY` | 코스 톤·동선 생성 모델(9장 5단계) | `claude-opus-4-8` |
+| `LLM_PROVIDER` | LLM 공급자 선택 | `anthropic` |
+| `LLM_MODEL_PRIMARY` | 코스 톤·동선 생성 모델(9장 5단계) | `claude-sonnet-4-6` |
 | `LLM_MODEL_CLASSIFIER` | 질의어 분류(저비용) 모델(9장 2단계) | `claude-haiku-4-5-20251001` |
 
-#### 12.4.1 LLM Observability (Langfuse)
+#### 12.4.1 LLM Provider 추상화 인터페이스
+
+> **설계 원칙**: LLM 호출은 직접 SDK를 호출하지 않고 **Provider 추상화 인터페이스**를 경유한다. 인터페이스는 `generate(prompt, model, params) → response` 형태로 정의하고, Anthropic/OpenAI 등 공급자별 구현체를 교체 가능하도록 설계(Spring AI 패턴 참조). 공급자 전환 시 인터페이스 구현체만 교체하면 되고 비즈니스 로직(9장 시퀀스)은 변경 없음.
+>
+> | 환경변수 | 설명 | 값 |
+> |---|---|---|
+> | `LLM_PROVIDER` | 사용할 LLM 공급자 | `anthropic`(기본) / `openai` |
+> | `LLM_MODEL_PRIMARY` | 코스 생성 모델(공급자별 모델명으로 매핑) | `claude-sonnet-4-6` |
+> | `LLM_MODEL_CLASSIFIER` | 질의어 분류 모델 | `claude-haiku-4-5-20251001` |
+
+#### 12.4.2 LLM Observability (Langfuse)
 | 키 | 설명 | 값 |
 |---|---|---|
 | `LANGFUSE_PUBLIC_KEY` | Langfuse public key | `TODO` |
