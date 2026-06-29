@@ -41,6 +41,34 @@ CATEGORIES: dict[str, str] = {
     "AT4": "관광명소",
 }
 
+# 카카오 category_group_code → theme_tag enum 매핑
+# 카카오 API는 평점·영업시간·theme_tags를 미제공(정책) → category_group_code로 자동 분류
+KAKAO_CATEGORY_THEME_MAP: dict[str, list[str]] = {
+    "FD6": ["FOOD"],          # 음식점 (BAR는 FD6 하위라 FOOD만 매핑, 추후 세분화 가능)
+    "CE7": ["CAFE"],          # 카페
+    "CT1": ["CULTURE"],       # 문화시설 (전시·미술관·박물관)
+    "AT4": ["CULTURE", "PARK"],  # 관광명소 (공원·야경 등 포함)
+    "MT1": ["SHOPPING"],      # 대형마트
+    "CS2": ["SHOPPING"],      # 편의점
+    "SW8": ["ACTIVITY"],      # 지하철역 (불필요하나 혹시 수집될 경우 대비)
+    "BK9": [],                # 은행 — 매핑 없음
+    "OL7": [],                # 주유소 — 매핑 없음
+    "PO3": [],                # 공공기관 — 매핑 없음
+    "AG2": [],                # 중개업소 — 매핑 없음
+    "HP8": [],                # 병원 — 매핑 없음
+    "PM9": [],                # 약국 — 매핑 없음
+    "SC4": [],                # 학교 — 매핑 없음
+    "AC5": [],                # 학원 — 매핑 없음
+    "PK6": [],                # 주차장 — 매핑 없음
+    "WC5": [],                # 숙박 — 매핑 없음
+    "AD5": [],                # 부동산 — 매핑 없음
+}
+
+
+def map_category_to_theme_tags(category_group_code: str) -> list[str]:
+    """카카오 category_group_code → theme_tag 목록. 매핑 불가 시 빈 배열."""
+    return KAKAO_CATEGORY_THEME_MAP.get(category_group_code, [])
+
 RADIUS_METERS = 7000
 PAGE_SIZE = 15
 MAX_PAGES = 3
@@ -132,17 +160,21 @@ async def fetch_all_places_for_station(
 
 def build_place_row(doc: dict) -> dict:
     """카카오 API 응답 document → places 테이블 행 딕셔너리."""
+    category_group_code = doc.get("category_group_code", "")
+    theme_tags = map_category_to_theme_tags(category_group_code)
     return {
         "external_source": "KAKAO",
         "external_id": doc["id"],
         "name": doc["place_name"],
-        "category": doc.get("category_group_code", ""),
+        "category": category_group_code,
         "address": doc.get("road_address_name") or doc.get("address_name", ""),
         "lat": float(doc["y"]),
         "lng": float(doc["x"]),
         "phone": doc.get("phone") or "",
         "map_url": doc.get("place_url") or "",
-        "business_hours": json.dumps({}),
+        # 카카오 API 미제공: business_hours, price_range → null 유지
+        "business_hours": None,
+        "theme_tags": theme_tags,
         "status": "OPEN",
         "last_synced_at": datetime.now(timezone.utc),
     }
@@ -153,11 +185,11 @@ UPSERT_SQL = """
 INSERT INTO places (
     external_source, external_id, name, category, address,
     lat, lng, geom,
-    phone, map_url, business_hours, status, last_synced_at
+    phone, map_url, business_hours, theme_tags, status, last_synced_at
 ) VALUES (
     $1::oauth_provider, $2, $3, $4, $5,
     $6, $7, ST_SetSRID(ST_MakePoint($7, $6), 4326)::geography,
-    $8, $9, $10::jsonb, $11, $12::timestamptz
+    $8, $9, $10::jsonb, $11::theme_tag[], $12, $13::timestamptz
 )
 ON CONFLICT (external_source, external_id) DO UPDATE SET
     name           = EXCLUDED.name,
@@ -169,6 +201,7 @@ ON CONFLICT (external_source, external_id) DO UPDATE SET
     phone          = EXCLUDED.phone,
     map_url        = EXCLUDED.map_url,
     business_hours = EXCLUDED.business_hours,
+    theme_tags     = EXCLUDED.theme_tags,
     status         = EXCLUDED.status,
     last_synced_at = EXCLUDED.last_synced_at
 """
@@ -195,7 +228,8 @@ async def upsert_places(
             row["lng"],
             row["phone"],
             row["map_url"],
-            row["business_hours"],
+            json.dumps(row["business_hours"]) if row["business_hours"] else None,
+            row["theme_tags"],
             row["status"],
             row["last_synced_at"],
         )
