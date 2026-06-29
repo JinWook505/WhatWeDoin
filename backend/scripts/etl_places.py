@@ -144,7 +144,7 @@ def build_place_row(doc: dict) -> dict:
         "map_url": doc.get("place_url") or "",
         "business_hours": json.dumps({}),
         "status": "OPEN",
-        "last_synced_at": datetime.now(timezone.utc).isoformat(),
+        "last_synced_at": datetime.now(timezone.utc),
     }
 
 
