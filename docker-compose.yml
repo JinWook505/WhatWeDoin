@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-whatwedoin}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-whatwedoin}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - whatwedoin-network
+
+  backend:
+    build: ./backend
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+      - backend-venv:/app/.venv
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - whatwedoin-network
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - whatwedoin-network
+
+volumes:
+  postgres_data:
+  backend-venv:
+  frontend-node-modules:
+
+networks:
+  whatwedoin-network:
+    name: whatwedoin-network
