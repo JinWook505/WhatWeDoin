@@ -11,4 +11,6 @@ COPY . .
 
 EXPOSE 8080
 
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
+# uv sync: named volume(.venv)이 비어있는 첫 실행 시 패키지 설치
+# --reload: 코드 변경 시 uvicorn 자동 재시작 (hot-reload)
+CMD ["sh", "-c", "uv sync --frozen && uv run uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload"]
