@@ -1,9 +1,9 @@
 from sqlalchemy import BigInteger, Double, Enum, String, TIMESTAMP, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
-from app.models.enums import OAuthProvider
+from app.models.enums import OAuthProvider, ThemeTag
 
 
 class Place(Base):
@@ -25,6 +25,9 @@ class Place(Base):
     map_url: Mapped[str | None] = mapped_column(String)
     phone: Mapped[str | None] = mapped_column(String(30))
     thumbnail_url: Mapped[str | None] = mapped_column(String)
+    theme_tags: Mapped[list[str]] = mapped_column(
+        ARRAY(Enum(ThemeTag, name="theme_tag")), server_default=text("'{}'")
+    )
     status: Mapped[str] = mapped_column(String(10), server_default="OPEN")
     last_synced_at: Mapped[str | None] = mapped_column(TIMESTAMP(timezone=True))
     created_at: Mapped[str | None] = mapped_column(
