@@ -162,7 +162,7 @@ WhatWeDoin/
 ## 로컬 개발 시작 순서
 
 ```bash
-# 1. DB + Cache
+# 1. DB
 docker compose up -d
 
 # 2. Backend

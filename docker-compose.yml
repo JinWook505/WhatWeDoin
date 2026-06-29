@@ -18,8 +18,37 @@ services:
     networks:
       - whatwedoin-network
 
+  backend:
+    build: ./backend
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+      - backend-venv:/app/.venv
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - whatwedoin-network
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - whatwedoin-network
+
 volumes:
   postgres_data:
+  backend-venv:
+  frontend-node-modules:
 
 networks:
   whatwedoin-network:

@@ -7,9 +7,13 @@ services:
       - .env
     volumes:
       - .:/app
+      - backend-venv:/app/.venv
     networks:
       - whatwedoin-network
 
 networks:
   whatwedoin-network:
     external: true
+
+volumes:
+  backend-venv:
