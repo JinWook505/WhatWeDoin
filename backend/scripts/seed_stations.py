@@ -2,7 +2,7 @@
 Seoul subway station seeding script.
 
 Prerequisites:
-  - SCRUM-58 완료 (Alembic migration, stations table created)
+  - SCRUM-58 완료 (Alembic migration, stations / station_lines table created)
   - DATABASE_URL env var or default postgresql://postgres:postgres@localhost:5432/whatwedoin
 
 Usage:
@@ -10,6 +10,10 @@ Usage:
   DATABASE_URL=postgresql://... python -m scripts.seed_stations
   # or with docker-compose DB:
   python -m scripts.seed_stations
+
+Notes:
+  - 재실행 안전: (external_source, external_id) 기준 upsert — 중복 에러 없음
+  - 지방 도시(대구·부산 등) 확장 시 STATIONS 목록에 추가 후 동일 스크립트 재실행
 """
 
 import asyncio
@@ -21,7 +25,7 @@ from dataclasses import dataclass
 @dataclass
 class StationRow:
     name: str
-    line: str      # 노선 — external_id 생성에만 사용 (DB 컬럼 없음)
+    line: str      # 노선명 — external_id 생성 및 station_lines 적재에 사용
     lat: float
     lng: float
     is_supported: bool
@@ -56,7 +60,7 @@ STATIONS: list[StationRow] = [
     StationRow("이태원",    "6호선",  37.5340, 126.9946, True),
     StationRow("한강진",    "6호선",  37.5298, 126.9996, True),
     StationRow("상수",      "6호선",  37.5479, 126.9224, True),
-    StationRow("연남동",    "경의중앙선", 37.5598, 126.9241, True),  # 홍대입구 인근
+    # 연남동 제거: 독립 역이 아닌 홍대입구역 생활권 (중복)
     StationRow("여의도",    "5호선",  37.5217, 126.9240, True),
     StationRow("당산",      "2호선",  37.5343, 126.9007, True),
     StationRow("명동",      "4호선",  37.5636, 126.9857, True),
@@ -133,16 +137,12 @@ async def seed(database_url: str | None = None) -> None:
     print(f"Connecting to DB: {url.split('@')[-1]}")
     conn = await asyncpg.connect(url)
     try:
-        # 중복 실행 안전: KAKAO 소스 기존 시드 행 삭제 후 재삽입
-        existing = await conn.fetchval(
-            "SELECT COUNT(*) FROM stations WHERE external_source = 'KAKAO'"
-        )
-        if existing:
-            await conn.execute("DELETE FROM stations WHERE external_source = 'KAKAO'")
-            print(f"  기존 시드 데이터 {existing}행 삭제 후 재적재")
+        upserted = 0
+        lines_upserted = 0
 
         for s in STATIONS:
-            await conn.execute(
+            # stations upsert: (external_source, external_id) 기준
+            station_id = await conn.fetchval(
                 """
                 INSERT INTO stations (external_source, external_id, name, lat, lng, geom, is_supported)
                 VALUES (
@@ -154,21 +154,45 @@ async def seed(database_url: str | None = None) -> None:
                     ST_SetSRID(ST_MakePoint($4, $3), 4326)::geography,
                     $5
                 )
+                ON CONFLICT (external_source, external_id) DO UPDATE SET
+                    name         = EXCLUDED.name,
+                    lat          = EXCLUDED.lat,
+                    lng          = EXCLUDED.lng,
+                    geom         = EXCLUDED.geom,
+                    is_supported = EXCLUDED.is_supported
+                RETURNING station_id
                 """,
                 s.external_id,
                 s.name,
                 s.lat,
-                s.lng,   # ST_MakePoint(lng, lat) — X=경도, Y=위도
+                s.lng,
                 s.is_supported,
             )
+            upserted += 1
+
+            # station_lines upsert: 동일 (station_id, line_no) 중복 시 무시
+            await conn.execute(
+                """
+                INSERT INTO station_lines (station_id, line_no)
+                VALUES ($1, $2)
+                ON CONFLICT DO NOTHING
+                """,
+                station_id,
+                s.line,
+            )
+            lines_upserted += 1
 
         # ── 적재 결과 검증 ─────────────────────────────────────────────────
         db_total = await conn.fetchval("SELECT COUNT(*) FROM stations")
         db_supported = await conn.fetchval(
             "SELECT COUNT(*) FROM stations WHERE is_supported = true"
         )
+        db_lines = await conn.fetchval("SELECT COUNT(*) FROM station_lines")
 
-        print(f"[OK] 적재 완료 -> 전체 {db_total}개, is_supported=true {db_supported}개")
+        print(
+            f"[OK] 적재 완료 -> stations {db_total}개 (is_supported=true {db_supported}개), "
+            f"station_lines {db_lines}개"
+        )
 
         if db_supported < MVP_SUPPORTED_COUNT:
             print(
@@ -180,17 +204,21 @@ async def seed(database_url: str | None = None) -> None:
         # 지원 역 목록 출력
         rows = await conn.fetch(
             """
-            SELECT name,
-                   ST_Y(geom::geometry) AS lat,
-                   ST_X(geom::geometry) AS lng
-            FROM stations
-            WHERE is_supported = true
-            ORDER BY name
+            SELECT s.name,
+                   ST_Y(s.geom::geometry) AS lat,
+                   ST_X(s.geom::geometry) AS lng,
+                   array_agg(sl.line_no ORDER BY sl.line_no) AS lines
+            FROM stations s
+            LEFT JOIN station_lines sl ON sl.station_id = s.station_id
+            WHERE s.is_supported = true
+            GROUP BY s.station_id, s.name, s.geom
+            ORDER BY s.name
             """
         )
         print("\n지원 역 목록 (is_supported=true):")
         for r in rows:
-            print(f"  {r['name']}  lat={r['lat']:.4f}, lng={r['lng']:.4f}")
+            lines_str = ", ".join(r["lines"]) if r["lines"] else "-"
+            print(f"  {r['name']}  lat={r['lat']:.4f}, lng={r['lng']:.4f}  노선={lines_str}")
 
     finally:
         await conn.close()
