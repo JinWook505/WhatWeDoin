@@ -11,25 +11,13 @@
 .connector {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 0 8px 34px;
+  padding: 4px 0 4px 30px;
 }
 
 .connectorLine {
   width: 2px;
-  height: 32px;
-  background: #ddd;
+  height: 28px;
+  background: linear-gradient(180deg, rgba(168, 85, 247, 0.5), rgba(236, 72, 153, 0.4));
   border-radius: 1px;
   flex-shrink: 0;
-}
-
-.connectorLabel {
-  font-size: 12px;
-  color: #aaa;
-}
-
-@media (prefers-color-scheme: dark) {
-  .connectorLine {
-    background: #333;
-  }
 }

@@ -1,7 +1,8 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
   z-index: 100;
 }
 
@@ -10,7 +11,9 @@
   bottom: 0;
   left: 0;
   right: 0;
-  background: var(--background);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-bottom: none;
   border-radius: 20px 20px 0 0;
   z-index: 101;
   max-height: 85vh;
@@ -20,13 +23,13 @@
 .handle {
   width: 40px;
   height: 4px;
-  background: #ddd;
+  background: var(--border-strong);
   border-radius: 2px;
   margin: 12px auto 0;
 }
 
 .content {
-  padding: 20px 24px 40px;
+  padding: 20px 24px 48px;
 }
 
 .sheetHeader {
@@ -38,11 +41,12 @@
   font-weight: 700;
   margin: 0 0 4px;
   color: var(--foreground);
+  letter-spacing: -0.4px;
 }
 
 .sheetSub {
   font-size: 13px;
-  color: #888;
+  color: var(--foreground-muted);
   margin: 0;
 }
 
@@ -59,9 +63,11 @@
 }
 
 .sectionLabel {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--foreground-muted);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
   margin: 0;
 }
 
@@ -72,42 +78,48 @@
 
 .star {
   font-size: 28px;
-  color: #ddd;
+  color: rgba(255, 255, 255, 0.15);
   background: none;
   border: none;
   padding: 0;
   cursor: pointer;
   line-height: 1;
-  transition: color 0.1s;
+  transition: color 0.1s, transform 0.1s;
 }
 
 .star:hover {
-  color: #f5a623;
+  color: #f59e0b;
+  transform: scale(1.1);
 }
 
 .starActive {
-  color: #f5a623;
+  color: #f59e0b;
 }
 
 .input {
-  padding: 10px 12px;
-  border: 1.5px solid #ddd;
-  border-radius: 8px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 10px;
   font-size: 14px;
   font-family: inherit;
-  background: var(--background);
+  background: rgba(255, 255, 255, 0.03);
   color: var(--foreground);
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.input::placeholder {
+  color: rgba(240, 240, 240, 0.2);
 }
 
 .input:focus {
-  border-color: #333;
+  border-color: var(--neon-purple);
+  box-shadow: var(--glow-focus);
 }
 
 .error {
   font-size: 13px;
-  color: #e00;
+  color: #f87171;
   margin: 0;
 }
 
@@ -118,72 +130,48 @@
 
 .cancelBtn {
   flex: 1;
-  padding: 12px;
-  background: #f0f0f0;
-  border: none;
-  border-radius: 10px;
+  padding: 13px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
-  color: #333;
+  color: var(--foreground-muted);
+  transition: background 0.15s, color 0.15s;
 }
 
 .cancelBtn:hover:not(:disabled) {
-  background: #e0e0e0;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--foreground);
 }
 
 .submitBtn {
   flex: 2;
-  padding: 12px;
-  background: #111;
+  padding: 13px;
+  background: linear-gradient(135deg, #a855f7, #ec4899);
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   font-family: inherit;
   color: #fff;
+  transition: box-shadow 0.2s, transform 0.1s;
 }
 
 .submitBtn:hover:not(:disabled) {
-  background: #333;
+  box-shadow: 0 4px 20px rgba(168, 85, 247, 0.45);
+  transform: translateY(-1px);
+}
+
+.submitBtn:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .submitBtn:disabled,
 .cancelBtn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
-}
-
-@media (prefers-color-scheme: dark) {
-  .handle {
-    background: #444;
-  }
-
-  .input {
-    border-color: #333;
-  }
-
-  .input:focus {
-    border-color: #888;
-  }
-
-  .cancelBtn {
-    background: #222;
-    color: #eee;
-  }
-
-  .cancelBtn:hover:not(:disabled) {
-    background: #333;
-  }
-
-  .submitBtn {
-    background: #fff;
-    color: #111;
-  }
-
-  .submitBtn:hover:not(:disabled) {
-    background: #e0e0e0;
-  }
 }
