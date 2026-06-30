@@ -1,0 +1,189 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 100;
+}
+
+.sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--background);
+  border-radius: 20px 20px 0 0;
+  z-index: 101;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.handle {
+  width: 40px;
+  height: 4px;
+  background: #ddd;
+  border-radius: 2px;
+  margin: 12px auto 0;
+}
+
+.content {
+  padding: 20px 24px 40px;
+}
+
+.sheetHeader {
+  margin-bottom: 24px;
+}
+
+.sheetTitle {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: var(--foreground);
+}
+
+.sheetSub {
+  font-size: 13px;
+  color: #888;
+  margin: 0;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sectionLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0;
+}
+
+.stars {
+  display: flex;
+  gap: 8px;
+}
+
+.star {
+  font-size: 28px;
+  color: #ddd;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  line-height: 1;
+  transition: color 0.1s;
+}
+
+.star:hover {
+  color: #f5a623;
+}
+
+.starActive {
+  color: #f5a623;
+}
+
+.input {
+  padding: 10px 12px;
+  border: 1.5px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--background);
+  color: var(--foreground);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.input:focus {
+  border-color: #333;
+}
+
+.error {
+  font-size: 13px;
+  color: #e00;
+  margin: 0;
+}
+
+.btnRow {
+  display: flex;
+  gap: 10px;
+}
+
+.cancelBtn {
+  flex: 1;
+  padding: 12px;
+  background: #f0f0f0;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  color: #333;
+}
+
+.cancelBtn:hover:not(:disabled) {
+  background: #e0e0e0;
+}
+
+.submitBtn {
+  flex: 2;
+  padding: 12px;
+  background: #111;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  color: #fff;
+}
+
+.submitBtn:hover:not(:disabled) {
+  background: #333;
+}
+
+.submitBtn:disabled,
+.cancelBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (prefers-color-scheme: dark) {
+  .handle {
+    background: #444;
+  }
+
+  .input {
+    border-color: #333;
+  }
+
+  .input:focus {
+    border-color: #888;
+  }
+
+  .cancelBtn {
+    background: #222;
+    color: #eee;
+  }
+
+  .cancelBtn:hover:not(:disabled) {
+    background: #333;
+  }
+
+  .submitBtn {
+    background: #fff;
+    color: #111;
+  }
+
+  .submitBtn:hover:not(:disabled) {
+    background: #e0e0e0;
+  }
+}

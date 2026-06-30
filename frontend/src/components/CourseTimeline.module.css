@@ -1,0 +1,35 @@
+.timeline {
+  display: flex;
+  flex-direction: column;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+}
+
+.connector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 8px 34px;
+}
+
+.connectorLine {
+  width: 2px;
+  height: 32px;
+  background: #ddd;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.connectorLabel {
+  font-size: 12px;
+  color: #aaa;
+}
+
+@media (prefers-color-scheme: dark) {
+  .connectorLine {
+    background: #333;
+  }
+}

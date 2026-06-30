@@ -1,0 +1,171 @@
+.card {
+  display: flex;
+  gap: 16px;
+  padding: 20px;
+  border: 1.5px solid #eee;
+  border-radius: 14px;
+  background: var(--background);
+  position: relative;
+}
+
+.orderBadge {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #111;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.topRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.name {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--foreground);
+}
+
+.meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.category {
+  font-size: 12px;
+  color: #888;
+}
+
+.price {
+  font-size: 12px;
+  color: #888;
+}
+
+.price::before {
+  content: "·";
+  margin-right: 8px;
+}
+
+.ratingBlock {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.rating {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f5a623;
+}
+
+.description {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.hours {
+  font-size: 12px;
+  color: #888;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.ctaHours {
+  font-size: 12px;
+  color: #888;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-align: left;
+  font-family: inherit;
+}
+
+.ctaHours:hover {
+  color: var(--foreground);
+}
+
+.ctaSmall {
+  font-size: 12px;
+  color: #888;
+  background: none;
+  border: 1px solid #ddd;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.ctaSmall:hover {
+  border-color: #999;
+  color: var(--foreground);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.mapLink {
+  font-size: 13px;
+  color: #0070f3;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.mapLink:hover {
+  text-decoration: underline;
+}
+
+.reportBtn {
+  font-size: 12px;
+  color: #aaa;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.reportBtn:hover {
+  color: #666;
+}
+
+@media (prefers-color-scheme: dark) {
+  .card {
+    border-color: #222;
+  }
+
+  .orderBadge {
+    background: #fff;
+    color: #111;
+  }
+
+  .ctaSmall {
+    border-color: #333;
+  }
+}
