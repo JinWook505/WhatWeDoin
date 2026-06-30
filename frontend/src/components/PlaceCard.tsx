@@ -10,6 +10,12 @@ interface Props {
   courseId: number
 }
 
+function hasHours(bh: PlaceDetail["business_hours"]): boolean {
+  if (bh == null) return false
+  if (typeof bh === "object" && !Array.isArray(bh)) return Object.keys(bh).length > 0
+  return Boolean(bh)
+}
+
 export default function PlaceCard({ place, courseId }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [optimisticRating, setOptimisticRating] = useState<number | null>(null)
@@ -32,43 +38,34 @@ export default function PlaceCard({ place, courseId }: Props) {
   return (
     <>
       <article className={styles.card}>
-        <div className={styles.orderBadge}>{place.order}</div>
+        <div className={styles.orderBadge} aria-label={`${place.order}번째 장소`}>
+          {place.order}
+        </div>
 
         <div className={styles.body}>
           <div className={styles.topRow}>
-            <div>
+            <div className={styles.nameBlock}>
               <h3 className={styles.name}>{place.name}</h3>
-              <div className={styles.meta}>
-                {place.category && <span className={styles.category}>{place.category}</span>}
-                {place.price_range && (
-                  <span className={styles.price}>{place.price_range}</span>
-                )}
-              </div>
-            </div>
-
-            {/* rating */}
-            <div className={styles.ratingBlock}>
-              {displayCount > 0 ? (
-                <span className={styles.rating}>
-                  ★ {displayRating?.toFixed(1)} · {displayCount}명
-                </span>
-              ) : (
-                <button
-                  className={styles.ctaSmall}
-                  onClick={() => setSheetOpen(true)}
-                >
-                  별점 남기기
-                </button>
+              {place.price_range && (
+                <span className={styles.price}>{place.price_range}</span>
               )}
             </div>
+
+            {displayCount > 0 && (
+              <div className={styles.ratingBlock}>
+                <span className={styles.rating}>
+                  ★ {displayRating?.toFixed(1)}
+                  <span className={styles.ratingCount}>{displayCount}명</span>
+                </span>
+              </div>
+            )}
           </div>
 
           {place.description && (
             <p className={styles.description}>{place.description}</p>
           )}
 
-          {/* business hours */}
-          {place.business_hours != null ? (
+          {hasHours(place.business_hours) ? (
             <p className={styles.hours}>
               {JSON.stringify(place.business_hours)}
             </p>
@@ -77,11 +74,10 @@ export default function PlaceCard({ place, courseId }: Props) {
               className={styles.ctaHours}
               onClick={() => setSheetOpen(true)}
             >
-              영업시간 미확인 — 알고 계신가요? 제보하기
+              영업시간 정보 없음 — 알고 계신가요?
             </button>
           )}
 
-          {/* actions */}
           <div className={styles.actions}>
             {place.map_url && (
               <a
@@ -90,7 +86,7 @@ export default function PlaceCard({ place, courseId }: Props) {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                카카오맵에서 보기 →
+                카카오맵 보기
               </a>
             )}
             <button

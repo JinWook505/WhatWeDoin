@@ -1,19 +1,18 @@
-import styles from "./page.module.css"
+import styles from "./loading.module.css"
 
 export default function Loading() {
   return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <a href="/" className={styles.backLink}>← 다시 검색</a>
-        <div className={styles.loadingTitle} />
-        <div className={styles.loadingDesc} />
-      </header>
-      <div className={styles.loadingCards}>
+    <div className={styles.container}>
+      <div className={styles.spinner}>
+        <div className={styles.spinnerRing} />
+      </div>
+      <h2 className={styles.title}>AI가 코스를 짜는 중이에요</h2>
+      <p className={styles.sub}>딱 맞는 장소들을 찾고 있어요...</p>
+      <div className={styles.cards}>
         {[1, 2, 3].map((i) => (
-          <div key={i} className={styles.loadingCard} />
+          <div key={i} className={styles.card} />
         ))}
       </div>
-      <p className={styles.loadingHint}>AI가 코스를 생성하는 중이에요…</p>
     </div>
   )
 }

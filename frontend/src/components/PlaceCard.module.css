@@ -2,24 +2,31 @@
   display: flex;
   gap: 16px;
   padding: 20px;
-  border: 1.5px solid #eee;
-  border-radius: 14px;
-  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
   position: relative;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
 }
 
 .orderBadge {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
-  background: #111;
+  background: linear-gradient(135deg, #a855f7, #ec4899);
   color: #fff;
   font-size: 13px;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 2px 12px rgba(168, 85, 247, 0.4);
 }
 
 .body {
@@ -37,33 +44,24 @@
   gap: 12px;
 }
 
+.nameBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
 .name {
   font-size: 16px;
   font-weight: 700;
   margin: 0;
   color: var(--foreground);
-}
-
-.meta {
-  display: flex;
-  gap: 8px;
-  margin-top: 4px;
-  flex-wrap: wrap;
-}
-
-.category {
-  font-size: 12px;
-  color: #888;
+  letter-spacing: -0.3px;
 }
 
 .price {
   font-size: 12px;
-  color: #888;
-}
-
-.price::before {
-  content: "·";
-  margin-right: 8px;
+  color: var(--foreground-muted);
 }
 
 .ratingBlock {
@@ -74,53 +72,46 @@
 .rating {
   font-size: 13px;
   font-weight: 600;
-  color: #f5a623;
+  color: #f59e0b;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ratingCount {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--foreground-muted);
 }
 
 .description {
   font-size: 13px;
-  color: #666;
-  line-height: 1.55;
+  color: var(--foreground-muted);
+  line-height: 1.6;
   margin: 0;
 }
 
 .hours {
   font-size: 12px;
-  color: #888;
+  color: var(--foreground-muted);
   margin: 0;
   line-height: 1.5;
 }
 
 .ctaHours {
   font-size: 12px;
-  color: #888;
+  color: rgba(168, 85, 247, 0.6);
   background: none;
   border: none;
   padding: 0;
   cursor: pointer;
-  text-decoration: underline;
   text-align: left;
   font-family: inherit;
+  transition: color 0.15s;
 }
 
 .ctaHours:hover {
-  color: var(--foreground);
-}
-
-.ctaSmall {
-  font-size: 12px;
-  color: #888;
-  background: none;
-  border: 1px solid #ddd;
-  padding: 4px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.ctaSmall:hover {
-  border-color: #999;
-  color: var(--foreground);
+  color: var(--neon-purple);
 }
 
 .actions {
@@ -132,40 +123,31 @@
 
 .mapLink {
   font-size: 13px;
-  color: #0070f3;
-  text-decoration: none;
-  font-weight: 500;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #a855f7, #ec4899);
+  padding: 6px 14px;
+  border-radius: 8px;
+  transition: box-shadow 0.2s, transform 0.1s;
+  display: inline-block;
 }
 
 .mapLink:hover {
-  text-decoration: underline;
+  box-shadow: 0 2px 12px rgba(168, 85, 247, 0.45);
+  transform: translateY(-1px);
 }
 
 .reportBtn {
   font-size: 12px;
-  color: #aaa;
+  color: var(--foreground-muted);
   background: none;
   border: none;
   padding: 0;
   cursor: pointer;
   font-family: inherit;
+  transition: color 0.15s;
 }
 
 .reportBtn:hover {
-  color: #666;
-}
-
-@media (prefers-color-scheme: dark) {
-  .card {
-    border-color: #222;
-  }
-
-  .orderBadge {
-    background: #fff;
-    color: #111;
-  }
-
-  .ctaSmall {
-    border-color: #333;
-  }
+  color: var(--foreground);
 }
