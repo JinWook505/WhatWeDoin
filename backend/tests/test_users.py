@@ -39,3 +39,25 @@ def test_empty_request_allowed():
     req = UserUpdateRequest()
     assert req.nickname is None
     assert req.preferred_theme_tags is None
+
+
+# ---------------------------------------------------------------------------
+# DELETE /v1/users/me — withdrawal anonymisation logic checks
+# ---------------------------------------------------------------------------
+
+def test_withdrawal_anonymisation_sql_shape():
+    """Verify the anonymisation SQL targets the right column names (no DB needed)."""
+    from app.routers.users import delete_me
+    import inspect
+    src = inspect.getsource(delete_me)
+    assert "status" in src and "WITHDRAWN" in src
+    assert "oauth_id" in src and "withdrawn_" in src
+    assert "nickname" in src and "탈퇴한 사용자" in src
+    assert "email" in src
+    assert "profile_image_url" in src
+
+
+def test_theme_tags_empty_list_allowed():
+    # Empty list means "clear all tags" — should be valid
+    req = UserUpdateRequest(preferred_theme_tags=[])
+    assert req.preferred_theme_tags == []
