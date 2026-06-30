@@ -4,15 +4,27 @@ import { FormEvent, useState } from "react"
 import { useRouter } from "next/navigation"
 import styles from "./page.module.css"
 import LoginButton from "@/components/LoginButton"
+import LoginGateModal from "@/components/LoginGateModal"
+import { useDynamicPlaceholder } from "@/hooks/useDynamicPlaceholder"
+import { getAccessToken } from "@/lib/auth"
 
 export default function Home() {
   const router = useRouter()
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
+  const [showLoginGate, setShowLoginGate] = useState(false)
+
+  const placeholder = useDynamicPlaceholder(query.length > 0)
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     if (!query.trim() || loading) return
+
+    if (!getAccessToken()) {
+      setShowLoginGate(true)
+      return
+    }
+
     setLoading(true)
     router.push(`/result?q=${encodeURIComponent(query.trim())}`)
   }
@@ -41,7 +53,7 @@ export default function Home() {
             <textarea
               id="query"
               className={styles.textarea}
-              placeholder={"예: 친구들이랑 학교 끝나고 홍대입구역에서 놀다가\n저녁먹고 집 가고 싶어. 예산은 인당 15000원이야."}
+              placeholder={placeholder}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               rows={4}
@@ -61,6 +73,8 @@ export default function Home() {
           </a>
         </form>
       </main>
+
+      {showLoginGate && <LoginGateModal onClose={() => setShowLoginGate(false)} />}
     </div>
   )
 }
