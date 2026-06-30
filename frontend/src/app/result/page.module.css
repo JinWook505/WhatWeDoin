@@ -1,0 +1,210 @@
+.page {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+  min-height: 100vh;
+}
+
+.centered {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 80px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 32px;
+}
+
+.backLink {
+  font-size: 13px;
+  color: #888;
+  text-decoration: none;
+  margin-bottom: 4px;
+}
+
+.backLink:hover {
+  color: var(--foreground);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.station {
+  font-size: 13px;
+  font-weight: 600;
+  color: #888;
+}
+
+.tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: #f0f0f0;
+  color: #555;
+}
+
+.title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.8px;
+  line-height: 1.25;
+  margin: 0;
+  color: var(--foreground);
+}
+
+.desc {
+  font-size: 14px;
+  color: #666;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.distance {
+  font-size: 13px;
+  color: #888;
+  margin: 0;
+}
+
+/* Similar courses */
+.similar {
+  margin-top: 48px;
+  border-top: 1px solid #eee;
+  padding-top: 28px;
+}
+
+.similarTitle {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 16px;
+  color: var(--foreground);
+}
+
+.similarList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.similarItem {
+  font-size: 14px;
+  padding: 12px 16px;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  color: var(--foreground);
+}
+
+/* Error / limit states */
+.limitTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0;
+}
+
+.limitSub {
+  font-size: 14px;
+  color: #888;
+  margin: 0;
+}
+
+.errorDetail {
+  font-size: 13px;
+  color: #e00;
+  margin: 0;
+}
+
+.back {
+  font-size: 14px;
+  color: #888;
+  text-decoration: none;
+  margin-top: 8px;
+}
+
+.back:hover {
+  color: var(--foreground);
+}
+
+/* Skeleton loading */
+.loadingTitle {
+  height: 32px;
+  width: 70%;
+  background: #eee;
+  border-radius: 6px;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.loadingDesc {
+  height: 16px;
+  width: 50%;
+  background: #eee;
+  border-radius: 6px;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.loadingCards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 32px;
+}
+
+.loadingCard {
+  height: 140px;
+  background: #eee;
+  border-radius: 14px;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.loadingHint {
+  text-align: center;
+  font-size: 13px;
+  color: #aaa;
+  margin-top: 24px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-color-scheme: dark) {
+  .tag {
+    background: #222;
+    color: #aaa;
+  }
+
+  .similar {
+    border-top-color: #222;
+  }
+
+  .similarItem {
+    border-color: #222;
+  }
+
+  .loadingTitle,
+  .loadingDesc,
+  .loadingCard {
+    background: #222;
+  }
+}
