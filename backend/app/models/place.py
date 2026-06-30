@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Double, Enum, String, TIMESTAMP, text
+from sqlalchemy import BigInteger, Double, Enum, Integer, String, TIMESTAMP, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,6 +28,8 @@ class Place(Base):
     theme_tags: Mapped[list[str]] = mapped_column(
         ARRAY(Enum(ThemeTag, name="theme_tag")), server_default=text("'{}'")
     )
+    user_rating_sum: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    user_rating_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     status: Mapped[str] = mapped_column(String(10), server_default="OPEN")
     last_synced_at: Mapped[str | None] = mapped_column(TIMESTAMP(timezone=True))
     created_at: Mapped[str | None] = mapped_column(
