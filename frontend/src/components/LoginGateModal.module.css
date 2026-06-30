@@ -1,0 +1,78 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px;
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 20px;
+  padding: 36px 28px;
+  max-width: 340px;
+  width: 100%;
+  text-align: center;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: none;
+  border: none;
+  color: var(--foreground-muted);
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px;
+}
+
+.icon {
+  font-size: 36px;
+  margin: 0;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--foreground);
+  margin: 0;
+  letter-spacing: -0.4px;
+}
+
+.desc {
+  font-size: 14px;
+  color: var(--foreground-muted);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.kakaoBtn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 14px;
+  background: #fee500;
+  color: #191919;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.kakaoBtn:hover {
+  opacity: 0.88;
+}
