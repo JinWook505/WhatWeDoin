@@ -56,6 +56,9 @@ export default function Home() {
           >
             {loading ? "코스 생성 중..." : "AI 코스 추천받기"}
           </button>
+          <a href="/courses" className={styles.exploreLink}>
+            코스 탐색하기 →
+          </a>
         </form>
       </main>
     </div>

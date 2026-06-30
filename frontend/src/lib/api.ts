@@ -108,3 +108,49 @@ export async function reportPlace(
     throw new ApiError(body?.detail ?? `HTTP ${res.status}`, res.status)
   }
 }
+
+export interface CourseListItem {
+  course_id: number
+  station_name: string | null
+  theme_tags: string[]
+  budget_tier: string | null
+  companion_type: string | null
+  head_count: number | null
+  bayesian_score: number
+  rating_count: number
+  preview_places: string[]
+  total_walking_distance_km: number | null
+  created_at: string | null
+}
+
+export interface CourseListResponse {
+  courses: CourseListItem[]
+  next_cursor: string | null
+}
+
+export async function getCourses(params: {
+  theme?: string[]
+  companion_type?: string
+  budget_tier?: string
+  sort?: "score" | "recent"
+  limit?: number
+  cursor?: string
+}): Promise<CourseListResponse> {
+  const url = new URL(`${API_URL}/v1/courses`)
+  if (params.theme?.length) {
+    for (const t of params.theme) url.searchParams.append("theme", t)
+  }
+  if (params.companion_type) url.searchParams.set("companion_type", params.companion_type)
+  if (params.budget_tier) url.searchParams.set("budget_tier", params.budget_tier)
+  if (params.sort) url.searchParams.set("sort", params.sort)
+  if (params.limit) url.searchParams.set("limit", String(params.limit))
+  if (params.cursor) url.searchParams.set("cursor", params.cursor)
+
+  const res = await fetch(url.toString(), { cache: "no-store" })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new ApiError(body?.detail?.message ?? `HTTP ${res.status}`, res.status)
+  }
+  const json = await res.json()
+  return json.data as CourseListResponse
+}
