@@ -3,7 +3,16 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/whatwedoin"
+
+    # Kakao OAuth
     KAKAO_REST_API_KEY: str = ""
+    KAKAO_CLIENT_SECRET: str = ""
+    KAKAO_REDIRECT_URI: str = "http://localhost:3000/oauth/callback"
+
+    # JWT
+    JWT_SECRET: str = "dev-secret-change-in-prod"
+    JWT_ACCESS_TTL_MINUTES: int = 30
+    JWT_REFRESH_TTL_DAYS: int = 14
 
     # LLM Provider — "gemini" | "anthropic"
     LLM_PROVIDER: str = "gemini"

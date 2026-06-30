@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db as get_session
+from app.core.deps import require_current_user
 from app.services.classifier import InvalidQueryError, classify_query
 from app.services.course_generator import (
     CourseGenerationError,
@@ -56,6 +57,7 @@ class CourseResponse(BaseModel):
 async def recommend(
     req: RecommendRequest,
     session: AsyncSession = Depends(get_session),
+    current_user: dict = Depends(require_current_user),
 ):
     # 1. Classify
     try:
