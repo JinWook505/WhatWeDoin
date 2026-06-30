@@ -70,12 +70,7 @@ export default function PlaceCard({ place, courseId }: Props) {
               {JSON.stringify(place.business_hours)}
             </p>
           ) : (
-            <button
-              className={styles.ctaHours}
-              onClick={() => setSheetOpen(true)}
-            >
-              영업시간 정보 없음 — 알고 계신가요?
-            </button>
+            <span className={styles.noHours}>영업시간 미등록</span>
           )}
 
           <div className={styles.actions}>
@@ -93,7 +88,7 @@ export default function PlaceCard({ place, courseId }: Props) {
               className={styles.reportBtn}
               onClick={() => setSheetOpen(true)}
             >
-              제보하기
+              정보 제보
             </button>
           </div>
         </div>
