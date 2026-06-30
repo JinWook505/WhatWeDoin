@@ -1,3 +1,5 @@
+import { getAccessToken } from "@/lib/auth"
+
 // Server-side uses internal Docker network URL; client-side uses public URL (browser-accessible)
 const API_URL =
   typeof window === "undefined"
@@ -68,15 +70,19 @@ export async function recommend(
   query: string,
   excludePlaceIds: number[] = [],
 ): Promise<RecommendResponse> {
+  const token = typeof window !== "undefined" ? getAccessToken() : null
   const res = await fetch(`${API_URL}/v1/courses/recommend`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({
       query,
       exclude_place_ids: excludePlaceIds,
     }),
     cache: "no-store",
-  })
+  } as RequestInit)
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new ApiError(

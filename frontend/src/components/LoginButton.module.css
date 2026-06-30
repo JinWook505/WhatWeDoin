@@ -1,0 +1,58 @@
+.kakaoBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  background: #fee500;
+  color: #000;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.kakaoBtn:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.kakaoBtn:active {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.userRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nickname {
+  font-size: 13px;
+  color: var(--foreground-muted);
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logoutBtn {
+  font-size: 12px;
+  color: var(--foreground-muted);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+
+.logoutBtn:hover {
+  background: rgba(255,255,255,0.1);
+}

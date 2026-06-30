@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react"
 import { useRouter } from "next/navigation"
 import styles from "./page.module.css"
+import LoginButton from "@/components/LoginButton"
 
 export default function Home() {
   const router = useRouter()
@@ -22,7 +23,10 @@ export default function Home() {
       <div className={styles.blob2} aria-hidden="true" />
       <main className={styles.main}>
         <header className={styles.header}>
-          <span className={styles.eyebrow}>AI Course Planner</span>
+          <div className={styles.topBar}>
+            <span className={styles.eyebrow}>AI Course Planner</span>
+            <LoginButton />
+          </div>
           <h1 className={styles.title}>오늘 뭐하고 놀지?</h1>
           <p className={styles.subtitle}>
             지하철역 하나만 알려주면 AI가 딱 맞는 코스를 짜드려요
