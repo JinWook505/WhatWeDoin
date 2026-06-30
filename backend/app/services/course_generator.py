@@ -170,13 +170,19 @@ async def upsert_course(
         ]
     )
 
-    sql = text("""
+    # asyncpg cannot bind custom PostgreSQL enum/array types via :param placeholders.
+    # Inline all enum values as SQL literals; bind only plain scalars.
+    tag_literals = ", ".join(f"'{t}'::theme_tag" for t in theme_tags)
+    budget_literal = f"'{budget_tier}'::budget_tier"
+    companion_literal = f"'{companion_type}'::companion_type"
+
+    sql = text(f"""
         INSERT INTO courses
             (station_id, theme_tags, budget_tier, companion_type, query_text,
              places, content_hash, created_at, updated_at)
         VALUES
-            (:station_id, CAST(:theme_tags AS theme_tag[]), CAST(:budget_tier AS budget_tier),
-             CAST(:companion_type AS companion_type), :query_text,
+            (:station_id, ARRAY[{tag_literals}],
+             {budget_literal}, {companion_literal}, :query_text,
              CAST(:places AS jsonb), :content_hash, now(), now())
         ON CONFLICT (content_hash) DO UPDATE
             SET updated_at = now()
@@ -185,9 +191,6 @@ async def upsert_course(
 
     row = await session.execute(sql, {
         "station_id": station_id,
-        "theme_tags": "{" + ",".join(theme_tags) + "}",
-        "budget_tier": budget_tier,
-        "companion_type": companion_type,
         "query_text": query_text,
         "places": places_json,
         "content_hash": course.content_hash,

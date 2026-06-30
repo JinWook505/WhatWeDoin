@@ -33,6 +33,16 @@ async def search_candidate_places(
             session, station_id, _RADIUS_EXPANSION_KM, theme_tags, exclude_place_ids, limit
         )
 
+    # If theme filter yields too few results, fall back to no theme filter
+    if len(results) < _MIN_CANDIDATES and theme_tags:
+        logger.info(
+            "station=%s: theme filter yielded only %d candidates, retrying without theme filter",
+            station_id, len(results),
+        )
+        results = await _query(
+            session, station_id, _RADIUS_EXPANSION_KM, None, exclude_place_ids, limit
+        )
+
     return results
 
 
@@ -44,8 +54,16 @@ async def _query(
     exclude_place_ids: list[int] | None,
     limit: int,
 ) -> list[dict]:
-    theme_filter = "AND p.theme_tags && CAST(:theme_tags AS theme_tag[])" if theme_tags else ""
-    exclude_filter = "AND p.place_id != ALL(:exclude_ids)" if exclude_place_ids else ""
+    # Build filters inline to avoid asyncpg custom-type array binding issues
+    theme_clause = ""
+    if theme_tags:
+        tag_literals = ", ".join(f"'{t}'::theme_tag" for t in theme_tags)
+        theme_clause = f"AND p.theme_tags && ARRAY[{tag_literals}]"
+
+    exclude_clause = ""
+    if exclude_place_ids:
+        id_literals = ", ".join(str(i) for i in exclude_place_ids)
+        exclude_clause = f"AND p.place_id NOT IN ({id_literals})"
 
     sql = text(f"""
         SELECT
@@ -58,8 +76,8 @@ async def _query(
         JOIN stations s ON s.station_id = :station_id
         WHERE p.status = 'OPEN'
           AND ST_DWithin(p.geom::geography, s.geom::geography, :radius_m)
-          {theme_filter}
-          {exclude_filter}
+          {theme_clause}
+          {exclude_clause}
         ORDER BY distance_m
         LIMIT :limit
     """)
@@ -69,10 +87,6 @@ async def _query(
         "radius_m": radius_km * 1000,
         "limit": limit,
     }
-    if theme_tags:
-        params["theme_tags"] = "{" + ",".join(theme_tags) + "}"
-    if exclude_place_ids:
-        params["exclude_ids"] = exclude_place_ids
 
     result = await session.execute(sql, params)
     return [dict(row) for row in result.mappings().all()]
