@@ -8,6 +8,8 @@ import styles from "./PlaceCard.module.css"
 interface Props {
   place: PlaceDetail
   courseId: number
+  isExcluded?: boolean
+  onToggleExclude?: () => void
 }
 
 function hasHours(bh: PlaceDetail["business_hours"]): boolean {
@@ -16,7 +18,7 @@ function hasHours(bh: PlaceDetail["business_hours"]): boolean {
   return Boolean(bh)
 }
 
-export default function PlaceCard({ place, courseId }: Props) {
+export default function PlaceCard({ place, courseId, isExcluded = false, onToggleExclude }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [optimisticRating, setOptimisticRating] = useState<number | null>(null)
   const [optimisticCount, setOptimisticCount] = useState<number | null>(null)
@@ -37,7 +39,7 @@ export default function PlaceCard({ place, courseId }: Props) {
 
   return (
     <>
-      <article className={styles.card}>
+      <article className={`${styles.card} ${isExcluded ? styles.excluded : ""}`}>
         <div className={styles.orderBadge} aria-label={`${place.order}번째 장소`}>
           {place.order}
         </div>
@@ -90,6 +92,14 @@ export default function PlaceCard({ place, courseId }: Props) {
             >
               정보 제보
             </button>
+            {onToggleExclude && (
+              <button
+                className={isExcluded ? styles.includeBtn : styles.excludeBtn}
+                onClick={onToggleExclude}
+              >
+                {isExcluded ? "다시 포함" : "이 장소 빼기"}
+              </button>
+            )}
           </div>
         </div>
       </article>

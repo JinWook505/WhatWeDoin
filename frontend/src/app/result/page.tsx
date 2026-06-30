@@ -1,5 +1,5 @@
 import { recommend } from "@/lib/api"
-import CourseTimeline from "@/components/CourseTimeline"
+import ResultClient from "@/components/ResultClient"
 import styles from "./page.module.css"
 
 interface Props {
@@ -56,34 +56,7 @@ export default async function ResultPage({ searchParams }: Props) {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <a href="/" className={styles.backLink}>← 다시 검색</a>
-        {data.station_name && (
-          <span className={styles.station}>{data.station_name} 근처</span>
-        )}
-        <h1 className={styles.title}>{data.title}</h1>
-        {data.description && <p className={styles.desc}>{data.description}</p>}
-        {data.total_walking_distance_km != null && (
-          <p className={styles.distance}>
-            도보 총 {data.total_walking_distance_km.toFixed(1)} km
-          </p>
-        )}
-      </header>
-
-      <CourseTimeline places={data.places} courseId={data.course_id} />
-
-      {data.similar_top_courses.length > 0 && (
-        <section className={styles.similar}>
-          <h2 className={styles.similarTitle}>비슷한 인기 코스</h2>
-          <ul className={styles.similarList}>
-            {data.similar_top_courses.slice(0, 3).map((c) => (
-              <li key={c.course_id} className={styles.similarItem}>
-                {c.title ?? `코스 #${c.course_id}`}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <ResultClient initialData={data} query={q} />
     </div>
   )
 }
