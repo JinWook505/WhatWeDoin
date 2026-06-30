@@ -15,13 +15,15 @@ def user_messages():
 
 class TestGeminiProvider:
     @patch("app.services.llm.gemini.genai")
-    @patch("app.services.llm.gemini.asyncio.to_thread")
-    async def test_chat_returns_response(self, mock_to_thread, mock_genai, user_messages):
+    async def test_chat_returns_response(self, mock_genai, user_messages):
         mock_response = MagicMock()
         mock_response.text = "Hi there!"
         mock_response.usage_metadata.prompt_token_count = 10
         mock_response.usage_metadata.candidates_token_count = 5
-        mock_to_thread.return_value = mock_response
+
+        mock_client = MagicMock()
+        mock_client.aio.models.generate_content = AsyncMock(return_value=mock_response)
+        mock_genai.Client.return_value = mock_client
 
         from app.services.llm.gemini import GeminiProvider
         provider = GeminiProvider(api_key="fake-key", model="gemini-3.1-flash-lite")
