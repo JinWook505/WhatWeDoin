@@ -1,4 +1,8 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+// Server-side uses internal Docker network URL; client-side uses public URL (browser-accessible)
+const API_URL =
+  typeof window === "undefined"
+    ? (process.env.INTERNAL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://backend:8080")
+    : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080")
 
 export interface StationResult {
   station_id: number
@@ -26,6 +30,7 @@ export interface CourseData {
   course_id: number
   title: string
   description: string
+  station_name: string | null
   theme_tags: string[]
   places: PlaceDetail[]
   total_walking_distance_km: number | null
@@ -60,7 +65,6 @@ export async function searchStations(q: string): Promise<StationResult[]> {
 }
 
 export async function recommend(
-  stationId: number,
   query: string,
   excludePlaceIds: number[] = [],
 ): Promise<RecommendResponse> {
@@ -68,7 +72,6 @@ export async function recommend(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      station_id: stationId,
       query,
       exclude_place_ids: excludePlaceIds,
     }),

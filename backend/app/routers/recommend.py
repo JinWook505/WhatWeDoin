@@ -20,7 +20,7 @@ router = APIRouter(prefix="/v1/courses", tags=["recommend"])
 
 
 class RecommendRequest(BaseModel):
-    station_id: int
+    station_id: int | None = None
     query: str
     exclude_place_ids: list[int] = []
 
@@ -44,6 +44,7 @@ class CourseResponse(BaseModel):
     course_id: int
     title: str
     description: str
+    station_name: str | None = None
     theme_tags: list[str]
     places: list[PlaceDetail]
     total_walking_distance_km: float | None = None
@@ -77,10 +78,39 @@ async def recommend(
         else "COUPLE"
     )
 
+    # 1b. Resolve station_id — from request body or classifier-extracted name
+    station_id = req.station_id
+    station_name_resolved: str | None = classification.station_name
+    if station_id is None:
+        if not classification.station_name:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "NO_STATION", "message": "역 이름을 찾을 수 없어요. 질문에 지하철역 이름을 포함해 주세요."},
+            )
+        row = await session.execute(
+            text("SELECT station_id, name FROM stations WHERE name = :name LIMIT 1"),
+            {"name": classification.station_name},
+        )
+        station_row = row.mappings().first()
+        if not station_row:
+            # 부분 매칭 시도
+            row2 = await session.execute(
+                text("SELECT station_id, name FROM stations WHERE name LIKE :name LIMIT 1"),
+                {"name": f"%{classification.station_name}%"},
+            )
+            station_row = row2.mappings().first()
+        if not station_row:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "STATION_NOT_FOUND", "message": f"'{classification.station_name}' 역을 찾을 수 없어요."},
+            )
+        station_id = station_row["station_id"]
+        station_name_resolved = station_row["name"]
+
     # 2. Fetch candidates (shared between generate + upsert)
     candidates = await search_candidate_places(
         session,
-        req.station_id,
+        station_id,
         theme_tags=theme_tags,
         exclude_place_ids=req.exclude_place_ids or None,
     )
@@ -94,7 +124,7 @@ async def recommend(
     try:
         course = await generate_course(
             session=session,
-            station_id=req.station_id,
+            station_id=station_id,
             theme_tags=theme_tags,
             budget_tier=budget_tier,
             companion_type=companion_type,
@@ -117,7 +147,7 @@ async def recommend(
     # 4. Persist
     course_id = await upsert_course(
         session=session,
-        station_id=req.station_id,
+        station_id=station_id,
         course=course,
         theme_tags=theme_tags,
         budget_tier=budget_tier,
@@ -158,6 +188,7 @@ async def recommend(
             course_id=course_id,
             title=course.title,
             description=course.description,
+            station_name=station_name_resolved or classification.station_name,
             theme_tags=theme_tags,
             places=places_out,
             total_walking_distance_km=None,
