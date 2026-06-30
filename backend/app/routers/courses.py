@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -159,6 +160,162 @@ async def list_courses(
         "data": {
             "courses": courses_out,
             "next_cursor": next_cursor,
+        },
+        "error": None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/courses/{course_id}
+# ---------------------------------------------------------------------------
+
+_STALE_DAYS = 30
+
+
+@router.get("/{course_id}")
+async def get_course(
+    course_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    course_row = (
+        await db.execute(
+            text("""
+                SELECT
+                    c.course_id, c.station_id, c.theme_tags, c.budget_tier,
+                    c.companion_type, c.head_count, c.total_walking_distance_km,
+                    c.bayesian_score, c.rating_count, c.rating_sum, c.created_at,
+                    s.name AS station_name
+                FROM courses c
+                LEFT JOIN stations s ON s.station_id = c.station_id
+                WHERE c.course_id = :cid
+            """),
+            {"cid": course_id},
+        )
+    ).mappings().first()
+
+    if not course_row:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "NOT_FOUND", "message": "코스를 찾을 수 없어요."},
+        )
+
+    # Places (ordered by visit_order)
+    place_rows = (
+        await db.execute(
+            text("""
+                SELECT
+                    cp.visit_order, cp.place_id, cp.description,
+                    cp.walking_distance_to_next_km,
+                    p.name, p.category, p.address, p.lat, p.lng,
+                    p.price_range, p.business_hours, p.map_url,
+                    p.user_rating_sum, p.user_rating_count,
+                    p.status, p.last_synced_at
+                FROM course_places cp
+                JOIN places p ON p.place_id = cp.place_id
+                WHERE cp.course_id = :cid
+                ORDER BY cp.visit_order
+            """),
+            {"cid": course_id},
+        )
+    ).mappings().all()
+
+    now = datetime.now(timezone.utc)
+    is_stale = False
+    has_closed = False
+    places_out = []
+
+    for p in place_rows:
+        # Freshness check
+        if p["last_synced_at"]:
+            synced = p["last_synced_at"]
+            if hasattr(synced, "tzinfo") and synced.tzinfo is None:
+                synced = synced.replace(tzinfo=timezone.utc)
+            elif isinstance(synced, str):
+                synced = datetime.fromisoformat(synced)
+            if (now - synced).days > _STALE_DAYS:
+                is_stale = True
+
+        if p["status"] == "CLOSED":
+            has_closed = True
+
+        rc = p["user_rating_count"] or 0
+        rs = p["user_rating_sum"] or 0
+        avg_rating = round(rs / 2.0 / rc, 1) if rc > 0 else None
+
+        business_hours = p["business_hours"]
+        if isinstance(business_hours, str):
+            try:
+                business_hours = json.loads(business_hours)
+            except Exception:
+                business_hours = None
+
+        places_out.append({
+            "order": p["visit_order"],
+            "place_id": p["place_id"],
+            "name": p["name"],
+            "category": p["category"],
+            "address": p["address"],
+            "lat": float(p["lat"]) if p["lat"] else None,
+            "lng": float(p["lng"]) if p["lng"] else None,
+            "price_range": p["price_range"],
+            "business_hours": business_hours,
+            "map_url": p["map_url"],
+            "user_rating_avg": avg_rating,
+            "user_rating_count": rc,
+            "status": p["status"],
+            "description": p["description"] or "",
+            "walking_distance_to_next_km": (
+                float(p["walking_distance_to_next_km"])
+                if p["walking_distance_to_next_km"] is not None
+                else None
+            ),
+        })
+
+    # Review summary
+    n = course_row["rating_count"] or 0
+    s = course_row["rating_sum"] or 0
+    avg_score = round(s / n, 1) if n > 0 else None
+    bayesian = float(course_row["bayesian_score"] or 0)
+
+    # OG tags
+    theme_str = " + ".join(list(course_row["theme_tags"] or [])[:3])
+    preview_names = " → ".join(p["name"] for p in places_out[:3])
+    station_name = course_row["station_name"] or f"역{course_row['station_id']}"
+    dist = course_row["total_walking_distance_km"]
+
+    og_title = f"{station_name}역 | {theme_str} 코스"
+    og_desc_parts = [preview_names]
+    if dist:
+        og_desc_parts.append(f"도보 {float(dist):.1f}km")
+    if avg_score:
+        og_desc_parts.append(f"★ {avg_score}점")
+    og_description = " · ".join(og_desc_parts)
+
+    return {
+        "success": True,
+        "data": {
+            "course_id": course_row["course_id"],
+            "station_id": course_row["station_id"],
+            "station_name": station_name,
+            "theme_tags": list(course_row["theme_tags"] or []),
+            "budget_tier": course_row["budget_tier"],
+            "companion_type": course_row["companion_type"],
+            "head_count": course_row["head_count"],
+            "places": places_out,
+            "total_walking_distance_km": (
+                float(dist) if dist is not None else None
+            ),
+            "bayesian_score": bayesian,
+            "avg_score": avg_score,
+            "rating_count": n,
+            "is_stale": is_stale,
+            "has_closed": has_closed,
+            "created_at": str(course_row["created_at"]) if course_row["created_at"] else None,
+            "og": {
+                "title": og_title,
+                "description": og_description,
+                "image_url": None,  # V2: OG 이미지 자동생성
+            },
         },
         "error": None,
     }
