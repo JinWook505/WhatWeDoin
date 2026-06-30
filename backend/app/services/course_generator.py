@@ -109,16 +109,20 @@ async def generate_course(
     companion_type: str,
     query_text: str,
     exclude_place_ids: list[int] | None = None,
+    pre_fetched_candidates: list[dict] | None = None,
 ) -> GeneratedCourse | None:
     """Retrieve candidate places and ask LLM to generate a course.
 
     Returns None if generation fails after 1 retry (raises CourseGenerationError
     if no candidates are found at all).
     """
-    candidates = await search_candidate_places(
-        session, station_id, theme_tags=theme_tags,
-        exclude_place_ids=exclude_place_ids,
-    )
+    if pre_fetched_candidates is not None:
+        candidates = pre_fetched_candidates
+    else:
+        candidates = await search_candidate_places(
+            session, station_id, theme_tags=theme_tags,
+            exclude_place_ids=exclude_place_ids,
+        )
     if not candidates:
         raise CourseGenerationError("NO_CANDIDATES")
 

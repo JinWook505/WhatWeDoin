@@ -1,12 +1,12 @@
 from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.routers import health
-from app.routers import places
+from app.routers import health, places, recommend
 
 app = FastAPI(title="WhatWeDoin API")
 
 app.include_router(health.router)
 app.include_router(places.router)
+app.include_router(recommend.router)
 
 Instrumentator().instrument(app).expose(app)
