@@ -85,24 +85,13 @@ async def recommend(
         if not classification.station_name:
             raise HTTPException(
                 status_code=400,
-                detail={"code": "NO_STATION", "message": "역 이름을 찾을 수 없어요. 질문에 지하철역 이름을 포함해 주세요."},
+                detail={"code": "NO_STATION", "message": "어느 역 근처인지 알 수 없어요. 동네나 역 이름을 함께 알려주세요!"},
             )
-        row = await session.execute(
-            text("SELECT station_id, name FROM stations WHERE name = :name LIMIT 1"),
-            {"name": classification.station_name},
-        )
-        station_row = row.mappings().first()
-        if not station_row:
-            # 부분 매칭 시도
-            row2 = await session.execute(
-                text("SELECT station_id, name FROM stations WHERE name LIKE :name LIMIT 1"),
-                {"name": f"%{classification.station_name}%"},
-            )
-            station_row = row2.mappings().first()
+        station_row = await _resolve_station(session, classification.station_name)
         if not station_row:
             raise HTTPException(
                 status_code=404,
-                detail={"code": "STATION_NOT_FOUND", "message": f"'{classification.station_name}' 역을 찾을 수 없어요."},
+                detail={"code": "STATION_NOT_FOUND", "message": f"'{classification.station_name}' 근처 역을 찾을 수 없어요."},
             )
         station_id = station_row["station_id"]
         station_name_resolved = station_row["name"]
@@ -197,6 +186,29 @@ async def recommend(
         ).model_dump(),
         "error": None,
     }
+
+
+async def _resolve_station(session: AsyncSession, raw_name: str) -> dict | None:
+    """Try progressively looser matches to find a station by name.
+
+    1. Exact match
+    2. After stripping trailing '역'
+    3. LIKE %name% (partial)
+    4. LIKE %normalized% (partial, '역' stripped)
+    """
+    normalized = raw_name.rstrip("역").strip()
+
+    for name, sql in [
+        (raw_name,    "SELECT station_id, name FROM stations WHERE name = :name LIMIT 1"),
+        (normalized,  "SELECT station_id, name FROM stations WHERE name = :name LIMIT 1"),
+        (raw_name,    "SELECT station_id, name FROM stations WHERE name LIKE :name LIMIT 1"),
+        (normalized,  "SELECT station_id, name FROM stations WHERE name LIKE :name LIMIT 1"),
+    ]:
+        query = name if "LIKE" not in sql else f"%{name}%"
+        row = (await session.execute(text(sql), {"name": query})).mappings().first()
+        if row:
+            return dict(row)
+    return None
 
 
 async def _fetch_place_map(session: AsyncSession, place_ids: list[int]) -> dict[int, dict]:
