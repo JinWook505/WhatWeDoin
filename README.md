@@ -17,7 +17,7 @@
 | 지도 | 카카오맵 JS SDK |
 | 인증 | 카카오 OAuth 2.0 + 자체 JWT (access 30분, refresh 14일 회전) |
 | IaC | Terraform (AWS ECS + RDS + ALB) |
-| CI/CD | GitHub Actions (ECR → ECS / Vercel) |
+| CI/CD | GitHub Actions (ECR → ECS / S3+CloudFront) |
 
 ---
 
@@ -185,7 +185,7 @@ WhatWeDoin/
 | # | 내용 | 비고 |
 |---|---|---|
 | 🔲 | Terraform — AWS ECS + RDS + ALB (서울 리전) | SCRUM-67 |
-| 🔲 | GitHub Actions CI/CD — ECR → ECS (백엔드) + Vercel (프론트) | SCRUM-68 |
+| ✅ | GitHub Actions CI/CD — ECR → ECS (백엔드) + S3+CloudFront (프론트) | SCRUM-68 |
 | 🔲 | Langfuse LLM 관찰성 연동 (프롬프트·토큰·비용 트레이스) | P1 |
 | 🔲 | Sentry 예외 추적 | P1 |
 | 🔲 | AWS Secrets Manager 시크릿 관리 | P0 |
@@ -215,6 +215,87 @@ WhatWeDoin/
 | `GET` | `/v1/users/me` | 🔲 | 내 정보 조회 |
 | `PATCH` | `/v1/users/me` | 🔲 | 내 정보 수정 |
 | `DELETE` | `/v1/users/me` | 🔲 | 회원 탈퇴 |
+
+---
+
+## CI/CD 설정
+
+### GitHub Secrets 등록 목록
+
+| Secret 이름 | 설명 |
+|---|---|
+| `AWS_ROLE_ARN` | OIDC 자격증명용 IAM Role ARN (e.g. `arn:aws:iam::123456789012:role/github-actions-role`) |
+| `ECR_REPOSITORY` | ECR 리포지토리 이름 (e.g. `whatwedoin-backend`) |
+| `ECS_CLUSTER` | ECS 클러스터 이름 (e.g. `whatwedoin-cluster`) |
+| `ECS_SERVICE` | ECS 서비스 이름 (e.g. `whatwedoin-backend-service`) |
+| `S3_BUCKET` | 프론트엔드 정적 파일 S3 버킷 이름 |
+| `CLOUDFRONT_DISTRIBUTION_ID` | CloudFront 배포 ID |
+| `NEXT_PUBLIC_API_URL` | 프론트엔드에서 사용할 백엔드 API URL |
+
+### AWS OIDC IAM Role 설정
+
+장기 자격증명 없이 GitHub Actions에서 AWS 리소스에 접근하려면 OIDC Provider와 IAM Role을 설정해야 합니다.
+
+**1. IAM OIDC Provider 등록** (계정당 1회)
+
+```bash
+aws iam create-open-id-connect-provider \
+  --url https://token.actions.githubusercontent.com \
+  --client-id-list sts.amazonaws.com \
+  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
+```
+
+**2. IAM Role Trust Policy** (`trust-policy.json`)
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:JinWook505/subway-date:ref:refs/heads/main"
+        }
+      }
+    }
+  ]
+}
+```
+
+**3. IAM Role 생성**
+
+```bash
+aws iam create-role \
+  --role-name github-actions-whatwedoin \
+  --assume-role-policy-document file://trust-policy.json
+
+# 필요한 정책 연결
+aws iam attach-role-policy \
+  --role-name github-actions-whatwedoin \
+  --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
+
+aws iam attach-role-policy \
+  --role-name github-actions-whatwedoin \
+  --policy-arn arn:aws:iam::aws:policy/AmazonECS_FullAccess
+
+# S3 + CloudFront는 인라인 정책으로 최소 권한 부여
+```
+
+### 워크플로우 구성
+
+| 파일 | 트리거 | 동작 |
+|---|---|---|
+| `.github/workflows/ci.yml` | PR → main | Backend pytest + Frontend Jest + 빌드 검증 |
+| `.github/workflows/deploy-backend.yml` | push main (backend/**) | ECR 빌드·푸시 → ECS 롤링 업데이트 |
+| `.github/workflows/deploy-frontend.yml` | push main (frontend/**) | Next.js 빌드 → S3 업로드 → CloudFront 무효화 |
 
 ---
 
