@@ -2,23 +2,10 @@
 
 import { useState } from "react"
 import { recommend, isClarificationResult, ApiError, CourseData, StationResult } from "@/lib/api"
+import { COMPANION_TYPE_OPTIONS as COMPANION_OPTIONS, BUDGET_TIER_OPTIONS as BUDGET_OPTIONS } from "@/lib/enumOptions"
 import StationSearch from "./StationSearch"
 import ResultClient from "./ResultClient"
 import styles from "./ClarificationStep.module.css"
-
-const COMPANION_OPTIONS = [
-  { value: "SOLO", label: "혼자" },
-  { value: "FRIEND", label: "친구" },
-  { value: "COUPLE", label: "커플" },
-  { value: "FAMILY", label: "가족" },
-]
-
-const BUDGET_OPTIONS = [
-  { value: "UNDER_30000", label: "~3만원" },
-  { value: "30000_70000", label: "3~7만원" },
-  { value: "70000_150000", label: "7~15만원" },
-  { value: "OVER_150000", label: "15만원~" },
-]
 
 interface Props {
   query: string

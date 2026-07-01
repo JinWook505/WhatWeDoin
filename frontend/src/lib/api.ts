@@ -238,6 +238,7 @@ export async function getCourses(params: {
   theme?: string[]
   companion_type?: string
   budget_tier?: string
+  station_id?: number
   sort?: "score" | "recent"
   limit?: number
   cursor?: string
@@ -248,11 +249,33 @@ export async function getCourses(params: {
   }
   if (params.companion_type) url.searchParams.set("companion_type", params.companion_type)
   if (params.budget_tier) url.searchParams.set("budget_tier", params.budget_tier)
+  if (params.station_id != null) url.searchParams.set("station_id", String(params.station_id))
   if (params.sort) url.searchParams.set("sort", params.sort)
   if (params.limit) url.searchParams.set("limit", String(params.limit))
   if (params.cursor) url.searchParams.set("cursor", params.cursor)
 
   const res = await fetch(url.toString(), { cache: "no-store" })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new ApiError(body?.detail?.message ?? `HTTP ${res.status}`, res.status)
+  }
+  const json = await res.json()
+  return json.data as CourseListResponse
+}
+
+export async function getMyCourses(params: {
+  limit?: number
+  cursor?: string
+}): Promise<CourseListResponse> {
+  const token = typeof window !== "undefined" ? getAccessToken() : null
+  const url = new URL(`${API_URL}/v1/users/me/courses`)
+  if (params.limit) url.searchParams.set("limit", String(params.limit))
+  if (params.cursor) url.searchParams.set("cursor", params.cursor)
+
+  const res = await fetch(url.toString(), {
+    cache: "no-store",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new ApiError(body?.detail?.message ?? `HTTP ${res.status}`, res.status)

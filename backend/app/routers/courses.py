@@ -11,11 +11,20 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
+from app.models.enums import BudgetTier, CompanionType, ThemeTag
 
 router = APIRouter(prefix="/v1/courses", tags=["courses"])
 
 _DEFAULT_LIMIT = 20
 _MAX_LIMIT = 50
+
+# Korean labels for SEO-facing OG title/description (D-24). Keep in sync with
+# frontend/src/lib/enumOptions.ts — API responses still return raw enum codes.
+_THEME_TAG_KO = {
+    "FOOD": "맛집", "CAFE": "카페", "BAR": "술집", "BOARD_GAME": "보드게임",
+    "KARAOKE": "노래방", "ARCADE": "오락", "PARK": "공원", "CULTURE": "전시/문화",
+    "SHOPPING": "쇼핑", "NIGHT_VIEW": "야경", "MOVIE": "영화", "ACTIVITY": "액티비티",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -59,10 +68,24 @@ async def list_courses(
         params["station_id"] = station_id
 
     if theme:
-        conditions.append("c.theme_tags && CAST(:themes AS theme_tag[])")
-        params["themes"] = "{" + ",".join(theme) + "}"
+        for t in theme:
+            if t not in ThemeTag._value2member_map_:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"code": "INVALID_THEME", "message": f"'{t}'는 유효한 테마가 아니에요."},
+                )
+        # asyncpg cannot bind a Python str to an ARRAY(enum) target via :param —
+        # values are validated against ThemeTag above, so inlining as literals is safe
+        # (see course_generator.py / users.py for the same established pattern).
+        tag_literals = ", ".join(f"'{t}'::theme_tag" for t in theme)
+        conditions.append(f"c.theme_tags && ARRAY[{tag_literals}]")
 
     if companion_type:
+        if companion_type not in CompanionType._value2member_map_:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "INVALID_COMPANION_TYPE", "message": f"'{companion_type}'는 유효한 동행 유형이 아니에요."},
+            )
         conditions.append("c.companion_type = CAST(:companion_type AS companion_type)")
         params["companion_type"] = companion_type
 
@@ -71,6 +94,11 @@ async def list_courses(
         params["head_count"] = head_count
 
     if budget_tier:
+        if budget_tier not in BudgetTier._value2member_map_:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "INVALID_BUDGET_TIER", "message": f"'{budget_tier}'는 유효한 예산대가 아니에요."},
+            )
         conditions.append("c.budget_tier = CAST(:budget_tier AS budget_tier)")
         params["budget_tier"] = budget_tier
 
@@ -278,7 +306,7 @@ async def get_course(
     bayesian = float(course_row["bayesian_score"] or 0)
 
     # OG tags
-    theme_str = " + ".join(list(course_row["theme_tags"] or [])[:3])
+    theme_str = " + ".join(_THEME_TAG_KO.get(t, t) for t in list(course_row["theme_tags"] or [])[:3])
     preview_names = " → ".join(p["name"] for p in places_out[:3])
     station_name = course_row["station_name"] or f"역{course_row['station_id']}"
     dist = course_row["total_walking_distance_km"]

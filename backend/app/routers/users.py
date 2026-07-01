@@ -1,11 +1,12 @@
 """User profile endpoints: GET/PATCH /v1/users/me, DELETE /v1/users/me."""
 from __future__ import annotations
 
+import base64
 import json
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,9 @@ from app.core.deps import require_current_user
 from app.models.enums import BudgetTier, CompanionType, DatingStage, GenderType, ThemeTag
 
 router = APIRouter(prefix="/v1/users", tags=["users"])
+
+_DEFAULT_COURSES_LIMIT = 20
+_MAX_COURSES_LIMIT = 50
 
 
 # ---------------------------------------------------------------------------
@@ -300,3 +304,119 @@ async def delete_me(
     await db.commit()
 
     return {"success": True, "data": {"deleted": True}, "error": None}
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/users/me/courses — 내가 생성한 코스 목록 (SCRUM-18 연장)
+# ---------------------------------------------------------------------------
+
+def _encode_courses_cursor(requested_at: str, course_id: int) -> str:
+    payload = json.dumps({"ts": requested_at, "id": course_id})
+    return base64.urlsafe_b64encode(payload.encode()).decode()
+
+
+def _decode_courses_cursor(cursor: str) -> tuple[str, int] | None:
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(cursor.encode()))
+        return str(payload["ts"]), int(payload["id"])
+    except Exception:
+        return None
+
+
+@router.get("/me/courses")
+async def list_my_courses(
+    current_user: dict = Depends(require_current_user),
+    limit: int = Query(default=_DEFAULT_COURSES_LIMIT, ge=1, le=_MAX_COURSES_LIMIT),
+    cursor: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Courses the current user has requested via /v1/courses/recommend.
+
+    Courses are shared/deduplicated rows (see content_hash), so "my courses"
+    means courses linked through this user's recommendation_requests, not a
+    courses.created_by column (which doesn't exist).
+    """
+    uid = current_user["id"]
+
+    params: dict[str, Any] = {"uid": uid, "limit": limit + 1}
+    cursor_cond = ""
+    if cursor:
+        decoded = _decode_courses_cursor(cursor)
+        if decoded is None:
+            raise HTTPException(status_code=400, detail={"code": "INVALID_CURSOR", "message": "잘못된 커서입니다."})
+        ts, cid = decoded
+        cursor_cond = "WHERE (latest.requested_at, c.course_id) < (:cursor_ts, :cursor_id)"
+        params["cursor_ts"] = ts
+        params["cursor_id"] = cid
+
+    rows = (
+        await db.execute(
+            text(f"""
+                SELECT
+                    c.course_id, c.station_id, s.name AS station_name,
+                    c.theme_tags, c.budget_tier, c.companion_type, c.head_count,
+                    c.bayesian_score, c.rating_count, c.total_walking_distance_km,
+                    c.created_at, latest.requested_at,
+                    (
+                        SELECT COALESCE(json_agg(p.name ORDER BY cp.visit_order), '[]'::json)
+                        FROM course_places cp
+                        JOIN places p ON p.place_id = cp.place_id
+                        WHERE cp.course_id = c.course_id
+                    ) AS preview_places
+                FROM (
+                    SELECT course_id, MAX(created_at) AS requested_at
+                    FROM recommendation_requests
+                    WHERE user_id = :uid AND course_id IS NOT NULL
+                    GROUP BY course_id
+                ) latest
+                JOIN courses c ON c.course_id = latest.course_id
+                LEFT JOIN stations s ON s.station_id = c.station_id
+                {cursor_cond}
+                ORDER BY latest.requested_at DESC, c.course_id DESC
+                LIMIT :limit
+            """),
+            params,
+        )
+    ).mappings().all()
+
+    has_next = len(rows) > limit
+    items = list(rows[:limit])
+
+    next_cursor = None
+    if has_next:
+        last = items[-1]
+        next_cursor = _encode_courses_cursor(str(last["requested_at"]), last["course_id"])
+
+    courses_out = []
+    for row in items:
+        preview = row["preview_places"]
+        if isinstance(preview, str):
+            preview = json.loads(preview)
+
+        courses_out.append({
+            "course_id": row["course_id"],
+            "station_id": row["station_id"],
+            "station_name": row["station_name"],
+            "theme_tags": list(row["theme_tags"] or []),
+            "budget_tier": row["budget_tier"],
+            "companion_type": row["companion_type"],
+            "head_count": row["head_count"],
+            "bayesian_score": float(row["bayesian_score"] or 0),
+            "rating_count": row["rating_count"] or 0,
+            "total_walking_distance_km": (
+                float(row["total_walking_distance_km"])
+                if row["total_walking_distance_km"] is not None
+                else None
+            ),
+            "preview_places": preview or [],
+            "created_at": str(row["created_at"]) if row["created_at"] else None,
+        })
+
+    return {
+        "success": True,
+        "data": {
+            "courses": courses_out,
+            "next_cursor": next_cursor,
+        },
+        "error": None,
+    }

@@ -82,6 +82,9 @@
 | **D-20** | **초기 입력에서 지하철역 수동 선택 UI 제거 → 질의어 자연어에서 LLM이 지명/동네를 추출해 최근접 지원 역에 매핑** | 2026-07-01. `station_name`(LLM 추출) → `station_id`(DB resolve)로 서버에서 처리(D-1 단일 역 정책은 유지). 지명 언급이 없거나 매칭 실패 시 US-A4 추가 입력 Step에서 역 검색 UI(구 US-A2)를 폴백으로 노출. GPS 자동 수집은 계속 미사용(11장). |
 | **D-21** | **`recommendation_requests.user_id`를 nullable로 변경(D-8과 11.1의 충돌 해소)** | 2026-07-01. D-8("생성은 로그인 필수, `user_id` NOT NULL")과 11.1("탈퇴 시 `recommendation_requests.user_id` NULL로 비식별화")이 스키마 레벨에서 충돌해 회원 탈퇴가 `NotNullViolationError`로 항상 실패하던 버그를 발견. 생성 시점의 "로그인 필수" 보장은 애플리케이션 레벨(`require_current_user`)에서 계속 유지하되, 탈퇴 후 비식별화를 위해 컬럼 자체의 `NOT NULL` 제약은 제거. |
 | **D-22** | **`course_reviews.chk_review_identity` 제거(D-21과 동일 유형의 충돌)** | 2026-07-01. 로그인 리뷰(`ip_hash` 없음)를 탈퇴로 `user_id`까지 NULL 처리하면 "`user_id` 또는 `ip_hash` 중 하나는 필수" CHECK를 위반해 탈퇴가 `CheckViolationError`로 실패. 작성 시점 규칙은 `POST /reviews`에서 이미 앱 레벨로 보장되므로 DB 제약은 제거(재발 방지: 탈퇴 로직이 건드리는 모든 테이블의 제약을 D-21/D-22 계기로 전수 점검함). |
+| **D-23** | **`GET /v1/courses`의 `theme`/`budget_tier`/`companion_type` 쿼리는 D-14 enum 코드(예: `FOOD`)만 허용, 자유 텍스트 한글 태그 불허** | 2026-07-01. 7.3 예시가 실제 `theme_tag` enum(D-14)이 아닌 자유 텍스트 한글("감성카페" 등)로 잘못 기술되어 있어, FE 구현(SCRUM-49)이 한글 문자열을 그대로 필터 값으로 전송하는 버그로 이어짐(동시에 BE도 `theme` 배열을 asyncpg에 바인딩 불가능한 방식으로 캐스팅해 500 발생). 유효하지 않은 enum 값은 `400 INVALID_THEME`/`INVALID_BUDGET_TIER`/`INVALID_COMPANION_TYPE`로 명확히 반려. |
+| **D-24** | **코스 목록/상세 화면은 enum 코드 대신 한국어 라벨로 표시** | 2026-07-01. `theme_tags`/`budget_tier`/`companion_type`는 API 계약상 여전히 D-14/enums.py의 코드값을 그대로 주고받되(DB/API 변경 없음), FE가 원시 코드를 사용자에게 그대로 노출하던 버그를 발견해 온보딩(SCRUM-9)에서 이미 쓰던 한글 라벨 매핑을 `frontend/src/lib/enumOptions.ts`로 단일화. |
+| **D-25** | **`GET /v1/users/me/courses`(내가 생성한 코스) 신규 추가** | 2026-07-01. `courses`는 콘텐츠 해시로 중복 제거되는 공유 엔티티라 소유자 컬럼이 없다(6.2.4). "내 코스"는 `recommendation_requests.user_id`(D-21)를 통해 역참조해 사용자가 요청한 적 있는 코스 집합으로 정의. US-D3 신설. |
 
 ---
 
@@ -287,6 +290,15 @@
 
 #### US-D2. 🆕 빈 목록 → 첫 코스 만들기 유도 — **P1**
 - [ ] Given 조건 부합 코스 0건, When 목록을 열면, Then 빈 상태 + "이 조건의 첫 코스를 만들어보세요" CTA가 표시되고 (로그인 후) 추천 입력 화면으로 연결된다.
+
+#### US-D3. 🆕 내가 생성한 코스만 모아보기 — **P1**
+> 그동안 내가 AI로 만든 코스만 따로 다시 찾아보고 싶다.
+> 관련: `GET /v1/users/me/courses`, D-25
+
+- [ ] Given 로그인 사용자, When "내 코스" 화면에 진입하면, Then 본인이 `POST /courses/recommend`로 요청해 받은 코스만 최근 요청순으로 모여 보인다.
+- [ ] Given 비로그인 사용자, When "내 코스" 화면에 접근하면, Then 로그인 유도로 연결된다.
+- [ ] Given 생성 이력 없음, When 목록을 열면, Then 빈 상태 + 홈으로 유도하는 안내가 표시된다.
+- [ ] Given 탈퇴(11.1) 이후, When 목록을 조회하면, Then 비식별화(D-21)로 인해 더 이상 어떤 코스도 "내 코스"로 연결되지 않는다.
 
 ### Epic E. 인증 & 개인화 (카카오 단일)
 
@@ -770,22 +782,22 @@ GET /v1/stations/search?q=합정&limit=10
 
 ### 7.3 GET /v1/courses — 메인 코스 목록 (역·테마·인원·예산 필터, 비로그인 열람)
 ```
-GET /v1/courses?station_id=239&theme=감성카페&theme=사진맛집&companion_type=COUPLE&head_count=2&budget_tier=30000_70000&sort=score&limit=20&cursor=
+GET /v1/courses?station_id=239&theme=CAFE&theme=FOOD&companion_type=COUPLE&head_count=2&budget_tier=30000_70000&sort=score&limit=20&cursor=
 ```
 | 쿼리 | 설명 |
 |---|---|
 | `station_id` | 선택. 특정 역 기준 필터 |
-| `theme` | 선택·**반복 가능**(다중 테마 태그). 하나라도 겹치면 매칭(배열 `&&`) |
+| `theme` | 선택·**반복 가능**(다중 테마 태그). `theme_tag` enum 코드(D-14)만 허용. 하나라도 겹치면 매칭(배열 `&&`) |
 | `companion_type` | 선택. `SOLO`/`FRIEND`/`COUPLE`/`FAMILY` |
 | `head_count` | 선택. 인원 |
-| `budget_tier` | 선택 |
+| `budget_tier` | 선택. `UNDER_30000`/`30000_70000`/`70000_150000`/`OVER_150000` |
 | `sort` | `score`(기본, 베이지안 평균) / `recent` |
 | `limit`, `cursor` | 커서 페이지네이션. 기본 20·최대 50 |
 
 ```json
 { "success": true,
   "data": { "courses": [
-    { "course_id": 5012, "station_id": 239, "theme_tags": ["감성카페","사진맛집"],
+    { "course_id": 5012, "station_id": 239, "theme_tags": ["CAFE","FOOD"],
       "budget_tier": "30000_70000", "companion_type": "COUPLE", "head_count": 2,
       "bayesian_score": 82.4, "rating_count": 38,
       "preview_places": ["00카페","00식당","00공원"], "total_walking_distance_km": 1.2 }
@@ -794,6 +806,15 @@ GET /v1/courses?station_id=239&theme=감성카페&theme=사진맛집&companion_t
 - **인증 불필요**. 생성 즉시 공개(D-10)라 모든 공개 코스가 대상. 조건 부합 0건이면 빈 배열 + "첫 코스 만들기" 유도(US-D2).
 - **랭킹**: `sort=score`는 `bayesian_score DESC`(D-11). 동점은 `rating_count`·`created_at`로 타이브레이크.
 - **신선도 표시**: 조회 시 포함 장소의 `last_synced_at`/`status`를 조인해 코스 단위 동적 산출. `stale_days`(30일) 초과 시 배지, `CLOSED` 포함 시 경고 + 후순위.
+- **필터 값 검증**(D-23): `theme`/`budget_tier`/`companion_type`이 각 enum에 없는 값이면 `400`(`INVALID_THEME`/`INVALID_BUDGET_TIER`/`INVALID_COMPANION_TYPE`). FE는 `theme_tags`/`budget_tier`/`companion_type`을 사용자에게 표시할 때 enum 코드가 아닌 한국어 라벨로 변환한다(D-24, `frontend/src/lib/enumOptions.ts`).
+
+### 7.3b GET /v1/users/me/courses — 내가 생성한 코스 (US-D3, D-25)
+```
+GET /v1/users/me/courses?limit=20&cursor=
+```
+- **로그인 필수**. `courses`는 소유자 컬럼이 없는 공유 엔티티라(6.2.4), `recommendation_requests.user_id = 나`로 연결된 `course_id`를 역참조해 코스별 가장 최근 요청 시각(`MAX(created_at)`) 내림차순으로 반환한다.
+- 응답 스키마는 7.3과 동일(`courses`/`next_cursor`). 커서는 `(requested_at, course_id)` 기준 keyset.
+- 탈퇴(11.1) 후에는 `recommendation_requests.user_id`가 NULL로 비식별화(D-21)되므로 자연히 목록에서 사라진다.
 
 ### 7.4 POST /v1/courses/recommend — 코스 추천 (핵심)
 > **로그인 필수(D-8)**. 비로그인 401 `UNAUTHORIZED`. **`station_id`는 선택값**(D-20) — 질의어에서 해석된 `location_mention`으로 서버가 resolve하며, resolve된 최종 역은 항상 정확히 1개(D-1). 하루 3회 무료(D-9).
@@ -806,7 +827,7 @@ GET /v1/courses?station_id=239&theme=감성카페&theme=사진맛집&companion_t
 // Request (US-A4 추가 입력 Step 완료 후 재요청 — station_id/parsed_input 직접 전달)
 { "query": "게임 좋아하는 친구 3명과 밥먹고 놀다 술자리 예산은 인당 3만원!",
   "station_id": 239,
-  "parsed_input": { "theme_tags": ["보드게임","맛집","술집"], "budget_tier": "30000_70000",
+  "parsed_input": { "theme_tags": ["BOARD_GAME","FOOD","BAR"], "budget_tier": "30000_70000",
                      "companion_type": "FRIEND", "head_count": 4 },
   "exclude_place_ids": [] }
 ```
@@ -820,12 +841,12 @@ GET /v1/courses?station_id=239&theme=감성카페&theme=사진맛집&companion_t
     "search_radius_km": 5,
     "parsed_input": {
       "location_mention": "홍대",
-      "theme_tags": ["보드게임","맛집","술집"],
+      "theme_tags": ["BOARD_GAME","FOOD","BAR"],
       "budget_tier": "30000_70000",
       "companion_type": "FRIEND",
       "head_count": 4
     },
-    "theme_tags": ["보드게임","맛집","술집"],
+    "theme_tags": ["BOARD_GAME","FOOD","BAR"],
     "places": [
       { "order": 1, "place_id": 10293, "name": "00식당", "category": "음식점", "price_range": "1만원대",
         "business_hours": { "mon": [["11:00","22:00"]], "sun": [] },
@@ -836,7 +857,7 @@ GET /v1/courses?station_id=239&theme=감성카페&theme=사진맛집&companion_t
     ],
     "total_walking_distance_km": 0.9,
     "similar_top_courses": [
-      { "course_id": 5012, "theme_tags": ["보드게임","술집"], "bayesian_score": 84.0, "rating_count": 27,
+      { "course_id": 5012, "theme_tags": ["BOARD_GAME","BAR"], "bayesian_score": 84.0, "rating_count": 27,
         "preview_places": ["00보드게임카페","00포차"], "total_walking_distance_km": 1.1 }
     ],
     "daily_remaining": 2,
@@ -846,7 +867,7 @@ GET /v1/courses?station_id=239&theme=감성카페&theme=사진맛집&companion_t
 ```json
 // Response (200, 위치/기타 필드 부족 — US-A4)
 { "status": "NEEDS_CLARIFICATION",
-  "partial_parsed_input": { "theme_tags": ["보드게임","맛집","술집"], "head_count": 4 },
+  "partial_parsed_input": { "theme_tags": ["BOARD_GAME","FOOD","BAR"], "head_count": 4 },
   "missing_fields": ["station_id", "budget_tier"] }
 ```
 - `query` → LLM 분류(9장 2단계) → `location_mention` + `parsed_input`. 분류 불가 시 `INVALID_QUERY`, 필드 일부 부족 시 `NEEDS_CLARIFICATION`(US-A4).

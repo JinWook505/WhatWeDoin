@@ -1,5 +1,6 @@
 import styles from "./page.module.css"
 import ReviewSection from "@/components/ReviewSection"
+import { THEME_TAG_KO, BUDGET_TIER_KO, COMPANION_TYPE_KO } from "@/lib/enumOptions"
 
 const API_URL =
   process.env.INTERNAL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://backend:8080"
@@ -75,13 +76,13 @@ export default async function CourseDetailPage({
 
         <div className={styles.meta}>
           {course.theme_tags.map((t) => (
-            <span key={t} className={styles.tag}>{t}</span>
+            <span key={t} className={styles.tag}>{THEME_TAG_KO[t] ?? t}</span>
           ))}
           {course.budget_tier && (
-            <span className={styles.tag}>{course.budget_tier}</span>
+            <span className={styles.tag}>{BUDGET_TIER_KO[course.budget_tier] ?? course.budget_tier}</span>
           )}
           {course.companion_type && (
-            <span className={styles.tag}>{course.companion_type}</span>
+            <span className={styles.tag}>{COMPANION_TYPE_KO[course.companion_type] ?? course.companion_type}</span>
           )}
         </div>
 
