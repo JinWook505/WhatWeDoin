@@ -1,19 +1,15 @@
 .kakaoBtn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 9px 16px;
+  justify-content: center;
+  padding: 9px;
   background: #fee500;
   color: #000;
   border: none;
   border-radius: 10px;
-  font-size: 13px;
-  font-weight: 700;
   font-family: inherit;
   cursor: pointer;
   transition: opacity 0.15s, transform 0.15s;
-  letter-spacing: 0.2px;
-  white-space: nowrap;
 }
 
 .kakaoBtn:hover {
