@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { recommend, CourseData } from "@/lib/api"
 import CourseTimeline from "./CourseTimeline"
 import ReviewSection from "./ReviewSection"
+import { incrementUsedCount } from "@/components/QuotaBadge"
 import styles from "./ResultClient.module.css"
 
 interface Props {
@@ -19,6 +20,10 @@ export default function ResultClient({ initialData, query, dailyRemaining: initi
   const [showWarning, setShowWarning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [remaining, setRemaining] = useState<number | null>(initialRemaining ?? null)
+
+  useEffect(() => {
+    incrementUsedCount()
+  }, [])
 
   const toggleExclude = useCallback((placeId: number) => {
     setExcludedIds((prev) => {
