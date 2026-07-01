@@ -1,0 +1,78 @@
+.section {
+  margin-top: 56px;
+  border-top: 1px solid var(--border);
+  padding-top: 32px;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 16px;
+  color: var(--foreground);
+  letter-spacing: -0.3px;
+}
+
+.scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  /* hide scrollbar but allow scroll */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.card {
+  flex: 0 0 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  text-decoration: none;
+  color: var(--foreground);
+  transition: border-color 0.15s, transform 0.15s;
+  cursor: pointer;
+}
+
+.card:hover {
+  border-color: var(--neon-purple);
+  transform: translateY(-2px);
+}
+
+.scoreBadge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+  background: rgba(168, 85, 247, 0.15);
+  color: var(--neon-purple);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  align-self: flex-start;
+}
+
+.cardTitle {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--foreground);
+  margin: 0;
+  flex: 1;
+}
+
+.arrow {
+  font-size: 14px;
+  color: var(--foreground-muted);
+  align-self: flex-end;
+  transition: color 0.15s;
+}
+
+.card:hover .arrow {
+  color: var(--neon-purple);
+}

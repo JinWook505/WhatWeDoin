@@ -3,10 +3,10 @@ from functools import lru_cache
 from app.core.config import settings
 
 from .anthropic import AnthropicProvider
-from .base import LLMMessage, LLMProvider, LLMResponse
+from .base import LLMMessage, LLMProvider, LLMResponse, LLMUnavailableError
 from .gemini import GeminiProvider
 
-__all__ = ["LLMMessage", "LLMProvider", "LLMResponse", "get_llm_provider"]
+__all__ = ["LLMMessage", "LLMProvider", "LLMResponse", "LLMUnavailableError", "get_llm_provider"]
 
 
 @lru_cache(maxsize=1)

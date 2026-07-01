@@ -55,6 +55,8 @@ def test_withdrawal_anonymisation_sql_shape():
     assert "nickname" in src and "탈퇴한 사용자" in src
     assert "email" in src
     assert "profile_image_url" in src
+    assert "withdrawn_at" in src
+    assert "recommendation_requests" in src
 
 
 def test_theme_tags_empty_list_allowed():

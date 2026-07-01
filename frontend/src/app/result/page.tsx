@@ -1,5 +1,6 @@
-import { recommend } from "@/lib/api"
+import { recommend, ApiError } from "@/lib/api"
 import ResultClient from "@/components/ResultClient"
+import ErrorFallback from "@/components/ErrorFallback"
 import styles from "./page.module.css"
 
 interface Props {
@@ -22,41 +23,38 @@ export default async function ResultPage({ searchParams }: Props) {
 
   let data = null
   let errorMessage: string | null = null
+  let errorCode: string | undefined
   let errorStatus = 0
+  let dailyRemaining: number | null = null
 
   try {
     const res = await recommend(q)
     data = res.data
+    dailyRemaining = res.daily_remaining ?? null
   } catch (err: unknown) {
-    if (err instanceof Error) {
+    if (err instanceof ApiError) {
       errorMessage = err.message
-      errorStatus = (err as { status?: number }).status ?? 500
+      errorStatus = err.status
+      errorCode = err.code
+    } else if (err instanceof Error) {
+      errorMessage = err.message
+      errorStatus = 500
     }
   }
 
-  if (errorStatus === 429) {
+  if (errorStatus > 0 || !data) {
     return (
-      <div className={styles.centered}>
-        <p className={styles.limitTitle}>오늘 추천 한도를 모두 사용했어요</p>
-        <p className={styles.limitSub}>KST 자정에 초기화됩니다. 내일 다시 이용해주세요.</p>
-        <a href="/" className={styles.back}>← 홈으로</a>
-      </div>
-    )
-  }
-
-  if (errorMessage || !data) {
-    return (
-      <div className={styles.centered}>
-        <p>코스 생성 중 오류가 발생했습니다.</p>
-        <p className={styles.errorDetail}>{errorMessage}</p>
-        <a href="/" className={styles.back}>← 다시 시도</a>
-      </div>
+      <ErrorFallback
+        status={errorStatus || undefined}
+        code={errorCode}
+        message={errorMessage ?? undefined}
+      />
     )
   }
 
   return (
     <div className={styles.page}>
-      <ResultClient initialData={data} query={q} />
+      <ResultClient initialData={data} query={q} dailyRemaining={dailyRemaining} />
     </div>
   )
 }

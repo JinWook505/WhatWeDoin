@@ -26,33 +26,88 @@
   opacity: 1;
 }
 
-.userRow {
+.userMenu {
+  position: relative;
+}
+
+.nicknameBtn {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-}
-
-.nickname {
+  gap: 6px;
   font-size: 13px;
   color: var(--foreground-muted);
-  max-width: 100px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.logoutBtn {
-  font-size: 12px;
-  color: var(--foreground-muted);
-  background: rgba(255,255,255,0.06);
+  background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 5px 10px;
+  border-radius: 10px;
+  padding: 7px 12px;
   cursor: pointer;
   font-family: inherit;
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s;
+  max-width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.logoutBtn:hover {
-  background: rgba(255,255,255,0.1);
+.nicknameBtn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--foreground);
 }
+
+.chevron {
+  font-size: 9px;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 120px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  overflow: hidden;
+  z-index: 100;
+  animation: fadeIn 0.12s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.dropdownItem {
+  display: block;
+  width: 100%;
+  padding: 11px 16px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--foreground-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.dropdownItem:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--foreground);
+}
+
+.dropdownItemDanger {
+  color: #ef4444;
+}
+
+.dropdownItemDanger:hover {
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+}
+
+/* legacy — keep for any external references */
+.userRow { display: inline-flex; align-items: center; gap: 10px; }
+.nickname { font-size: 13px; color: var(--foreground-muted); }
+.logoutBtn { display: none; }
