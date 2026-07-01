@@ -60,6 +60,7 @@ export default function ClarificationStep({
           budget_tier: budgetTier,
           companion_type: companionType,
           head_count: partialParsedInput.head_count ?? 2,
+          station_name: station?.name ?? partialParsedInput.station_name,
         },
       })
       if (isClarificationResult(res)) {

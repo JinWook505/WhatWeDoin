@@ -515,10 +515,10 @@ def _safe_enum(enum_cls, raw):
 async def _resolve_station(session: AsyncSession, raw_name: str) -> dict | None:
     normalized = raw_name.rstrip("역").strip()
     for name, sql in [
-        (raw_name,   "SELECT station_id, name FROM stations WHERE name = :name LIMIT 1"),
-        (normalized, "SELECT station_id, name FROM stations WHERE name = :name LIMIT 1"),
-        (raw_name,   "SELECT station_id, name FROM stations WHERE name LIKE :name LIMIT 1"),
-        (normalized, "SELECT station_id, name FROM stations WHERE name LIKE :name LIMIT 1"),
+        (raw_name,   "SELECT station_id, name FROM stations WHERE name = :name AND is_supported = true LIMIT 1"),
+        (normalized, "SELECT station_id, name FROM stations WHERE name = :name AND is_supported = true LIMIT 1"),
+        (raw_name,   "SELECT station_id, name FROM stations WHERE name LIKE :name AND is_supported = true LIMIT 1"),
+        (normalized, "SELECT station_id, name FROM stations WHERE name LIKE :name AND is_supported = true LIMIT 1"),
     ]:
         query = name if "LIKE" not in sql else f"%{name}%"
         row = (await session.execute(text(sql), {"name": query})).mappings().first()
