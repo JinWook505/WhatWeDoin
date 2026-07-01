@@ -206,7 +206,7 @@ async def update_me(
 
 
 # ---------------------------------------------------------------------------
-# DELETE /v1/users/me  (PIPA anonymisation, SCRUM-25)
+# DELETE /v1/users/me  (PIPA anonymisation, SCRUM-56)
 # ---------------------------------------------------------------------------
 
 @router.delete("/me")
@@ -216,19 +216,25 @@ async def delete_me(
 ):
     uid = current_user["id"]
 
-    # 1. Revoke all refresh tokens
+    # 1. Revoke all refresh tokens (covers Redis-less token invalidation)
     await db.execute(
         text("UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = :uid AND revoked_at IS NULL"),
         {"uid": uid},
     )
 
-    # 2. Anonymise reviews (keep rows for stats, clear user_id)
+    # 2. Anonymise course reviews — keep rows for stats, unlink user
     await db.execute(
         text("UPDATE course_reviews SET user_id = NULL WHERE user_id = :uid"),
         {"uid": uid},
     )
 
-    # 3. Anonymise user row: status=WITHDRAWN, PII zeroed, oauth_id obfuscated
+    # 3. Anonymise recommendation_requests — unlink user_id (PIPA: 이용 기록 비식별화)
+    await db.execute(
+        text("UPDATE recommendation_requests SET user_id = NULL WHERE user_id = :uid"),
+        {"uid": uid},
+    )
+
+    # 4. Anonymise user row: status=WITHDRAWN, PII zeroed, oauth_id obfuscated, withdrawn_at recorded
     await db.execute(
         text("""
             UPDATE users SET
@@ -244,6 +250,7 @@ async def delete_me(
                 preferred_theme_tags     = '{}',
                 preferred_budget         = NULL,
                 home_station_id          = NULL,
+                withdrawn_at       = now(),
                 updated_at         = now()
             WHERE id = :uid
         """),

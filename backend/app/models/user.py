@@ -53,6 +53,7 @@ class User(Base):
     updated_at: Mapped[str | None] = mapped_column(
         TIMESTAMP(timezone=True), server_default=text("now()")
     )
+    withdrawn_at: Mapped[str | None] = mapped_column(TIMESTAMP(timezone=True))
 
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user")  # noqa: F821
 
