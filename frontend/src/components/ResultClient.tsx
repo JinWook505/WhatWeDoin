@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react"
 import { recommend, CourseData } from "@/lib/api"
 import CourseTimeline from "./CourseTimeline"
 import ReviewSection from "./ReviewSection"
+import SimilarCourses from "./SimilarCourses"
 import { incrementUsedCount } from "@/components/QuotaBadge"
 import styles from "./ResultClient.module.css"
 
@@ -126,18 +127,7 @@ export default function ResultClient({ initialData, query, dailyRemaining: initi
 
       <ReviewSection courseId={data.course_id} />
 
-      {data.similar_top_courses.length > 0 && (
-        <section className={styles.similar}>
-          <h2 className={styles.similarTitle}>비슷한 인기 코스</h2>
-          <ul className={styles.similarList}>
-            {data.similar_top_courses.slice(0, 3).map((c) => (
-              <li key={c.course_id} className={styles.similarItem}>
-                {c.title ?? `코스 #${c.course_id}`}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <SimilarCourses courses={data.similar_top_courses} />
     </>
   )
 }
