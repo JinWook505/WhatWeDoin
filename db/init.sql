@@ -141,7 +141,9 @@ CREATE TABLE course_reviews (
     links       JSONB NOT NULL DEFAULT '[]',
     created_at  TIMESTAMPTZ DEFAULT now(),
     updated_at  TIMESTAMPTZ DEFAULT now(),
-    CONSTRAINT chk_review_identity CHECK (user_id IS NOT NULL OR ip_hash IS NOT NULL),
+    -- D-22: chk_review_identity(작성 시 user_id/ip_hash 중 하나 필수) 제거.
+    -- 작성 시점 규칙은 이미 앱 레벨(POST /reviews)에서 보장되며, 탈퇴 비식별화(11.1)로
+    -- user_id를 NULL로 비울 때 ip_hash 없는(로그인) 리뷰가 둘 다 NULL이 되는 경우와 충돌.
     CONSTRAINT chk_review_score    CHECK (score BETWEEN 0 AND 100 AND score % 5 = 0)
 );
 CREATE UNIQUE INDEX uq_review_user ON course_reviews (course_id, user_id) WHERE user_id IS NOT NULL;
