@@ -1,11 +1,21 @@
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from app.core.config import settings
 from app.routers import auth, courses, health, places, recommend, reviews, stations, users
 from app.services.llm.base import LLMUnavailableError
 
 app = FastAPI(title="WhatWeDoin API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in settings.CORS_ALLOWED_ORIGINS.split(",") if o.strip()],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.exception_handler(LLMUnavailableError)
