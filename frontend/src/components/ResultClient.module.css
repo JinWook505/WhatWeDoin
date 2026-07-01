@@ -84,12 +84,37 @@
 
 .regenBtn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-.error {
-  color: #f87171;
-  font-size: 13px;
-  margin-top: 12px;
-  text-align: center;
+.errorBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 13px 18px;
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: 12px;
 }
+
+.errorMsg {
+  font-size: 13px;
+  color: #f87171;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.errorDismiss {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  color: var(--foreground-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color 0.15s;
+}
+
+.errorDismiss:hover { color: var(--foreground); }
 
 /* Confirm dialog */
 .overlay {

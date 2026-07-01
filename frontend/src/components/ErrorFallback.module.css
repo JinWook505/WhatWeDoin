@@ -1,0 +1,137 @@
+.container {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 80px 20px 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.icon {
+  font-size: 48px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--foreground);
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+
+.sub {
+  font-size: 14px;
+  color: var(--foreground-muted);
+  margin: 0;
+  line-height: 1.65;
+  max-width: 320px;
+}
+
+.errorDetail {
+  font-size: 12px;
+  color: #f87171;
+  margin: 0;
+  max-width: 320px;
+}
+
+.queryBadge {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 18px;
+  margin: 4px 0;
+}
+
+.retryBtn {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 11px 28px;
+  border-radius: 50px;
+  background: var(--gradient-neon-h);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+
+.retryBtn:hover {
+  opacity: 0.85;
+}
+
+.homeLink {
+  font-size: 13px;
+  color: var(--foreground-muted);
+  text-decoration: none;
+  margin-top: 4px;
+  transition: color 0.15s;
+}
+
+.homeLink:hover {
+  color: var(--neon-purple);
+}
+
+/* Popular courses section */
+.popular {
+  width: 100%;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+}
+
+.popularLabel {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--foreground-muted);
+  text-transform: uppercase;
+  margin: 0 0 14px;
+}
+
+.popularList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+}
+
+.popularItem {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.popularItem:hover {
+  border-color: var(--border-strong);
+}
+
+.popularLink {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 18px;
+  text-decoration: none;
+}
+
+.popularTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.popularPlaces {
+  font-size: 12px;
+  color: var(--foreground-muted);
+}

@@ -1,9 +1,14 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import { recommend, CourseData } from "@/lib/api"
+import { recommend, CourseData, ApiError } from "@/lib/api"
 import CourseTimeline from "./CourseTimeline"
 import styles from "./ResultClient.module.css"
+
+const ERROR_MESSAGES: Record<string, string> = {
+  LLM_UNAVAILABLE: "AI가 잠시 응답하지 않아요. 잠시 후 다시 시도해 주세요.",
+  UPSTREAM_UNAVAILABLE: "서버가 일시적으로 바빠요. 잠시 후 재시도해 주세요.",
+}
 
 interface Props {
   initialData: CourseData
@@ -38,8 +43,9 @@ export default function ResultClient({ initialData, query }: Props) {
         window.scrollTo({ top: 0, behavior: "smooth" })
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "재생성 실패"
-      setError(msg)
+      const apiErr = err instanceof ApiError ? err : null
+      const code = apiErr?.code ?? ""
+      setError(ERROR_MESSAGES[code] ?? (err instanceof Error ? err.message : "재생성 실패"))
     } finally {
       setRegenerating(false)
     }
@@ -70,7 +76,12 @@ export default function ResultClient({ initialData, query }: Props) {
         onToggleExclude={toggleExclude}
       />
 
-      {error && <p className={styles.error}>{error}</p>}
+      {error && (
+        <div className={styles.errorBanner}>
+          <p className={styles.errorMsg}>{error}</p>
+          <button className={styles.errorDismiss} onClick={() => setError(null)}>닫기</button>
+        </div>
+      )}
 
       {hasExclusions && (
         <div className={styles.regenBar}>
