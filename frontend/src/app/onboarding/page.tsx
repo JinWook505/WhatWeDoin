@@ -3,46 +3,16 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { fetchWithAuth } from "@/lib/auth"
+import {
+  THEME_TAG_OPTIONS as THEMES,
+  COMPANION_TYPE_OPTIONS as COMPANIONS,
+  BUDGET_TIER_OPTIONS as BUDGETS,
+  GENDER_OPTIONS as GENDERS,
+  DATING_STAGE_OPTIONS as DATING_STAGES,
+} from "@/lib/enumOptions"
 import styles from "./page.module.css"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
-
-const THEMES = [
-  { value: "FOOD", label: "맛집" },
-  { value: "CAFE", label: "카페" },
-  { value: "BAR", label: "술집" },
-  { value: "BOARD_GAME", label: "보드게임" },
-  { value: "KARAOKE", label: "노래방" },
-  { value: "ARCADE", label: "오락" },
-  { value: "PARK", label: "공원" },
-  { value: "CULTURE", label: "전시/문화" },
-  { value: "SHOPPING", label: "쇼핑" },
-  { value: "NIGHT_VIEW", label: "야경" },
-  { value: "MOVIE", label: "영화" },
-  { value: "ACTIVITY", label: "액티비티" },
-]
-const COMPANIONS = [
-  { value: "COUPLE", label: "연인" },
-  { value: "FRIEND", label: "친구" },
-  { value: "FAMILY", label: "가족" },
-  { value: "SOLO", label: "혼자" },
-]
-const BUDGETS = [
-  { value: "UNDER_30000", label: "~3만원" },
-  { value: "30000_70000", label: "3~7만원" },
-  { value: "70000_150000", label: "7~15만원" },
-  { value: "OVER_150000", label: "15만원~" },
-]
-const GENDERS = [
-  { value: "FEMALE", label: "여성" },
-  { value: "MALE", label: "남성" },
-  { value: "OTHER", label: "기타" },
-]
-const DATING_STAGES = [
-  { value: "SOME", label: "썸" },
-  { value: "EARLY", label: "초기" },
-  { value: "LONGTERM", label: "장기" },
-]
 
 export default function OnboardingPage() {
   const router = useRouter()

@@ -72,6 +72,20 @@
   gap: 6px;
 }
 
+.stationFilter {
+  max-width: 280px;
+  flex: 1;
+}
+
+.myCoursesLink {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--neon-purple);
+  margin-left: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .badge {
   padding: 4px 12px;
   border-radius: 100px;
