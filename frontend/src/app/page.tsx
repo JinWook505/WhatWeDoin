@@ -6,8 +6,9 @@ import styles from "./page.module.css"
 import LoginButton from "@/components/LoginButton"
 import LoginGateModal from "@/components/LoginGateModal"
 import StationSearch from "@/components/StationSearch"
+import QuotaBadge, { getRemainingCount } from "@/components/QuotaBadge"
 import { useDynamicPlaceholder } from "@/hooks/useDynamicPlaceholder"
-import { getAccessToken } from "@/lib/auth"
+import { getAccessToken, isLoggedIn } from "@/lib/auth"
 import { StationResult } from "@/lib/api"
 
 export default function Home() {
@@ -19,7 +20,8 @@ export default function Home() {
 
   const placeholder = useDynamicPlaceholder(query.length > 0)
 
-  const canSubmit = !!station && query.trim().length > 0 && !loading
+  const isExhausted = isLoggedIn() && getRemainingCount() === 0
+  const canSubmit = !!station && query.trim().length > 0 && !loading && !isExhausted
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -50,6 +52,8 @@ export default function Home() {
             지하철역 하나만 알려주면 AI가 딱 맞는 코스를 짜드려요
           </p>
         </header>
+
+        <QuotaBadge />
 
         <form className={styles.form} onSubmit={handleSubmit} noValidate>
           <div className={styles.field}>
