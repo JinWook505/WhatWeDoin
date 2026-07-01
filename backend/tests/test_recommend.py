@@ -14,6 +14,13 @@ def _make_session():
     session = AsyncMock()
     session.__aenter__ = AsyncMock(return_value=session)
     session.__aexit__ = AsyncMock(return_value=False)
+    # Default: any SELECT looks empty (no quota usage, no cache hit) unless a test overrides
+    # session.execute itself. Without this, AsyncMock's auto-chained children make
+    # `(await session.execute(...)).mappings()` resolve to another coroutine instead of a mock.
+    default_result = MagicMock()
+    default_result.mappings.return_value.first.return_value = None
+    default_result.mappings.return_value.all.return_value = []
+    session.execute = AsyncMock(return_value=default_result)
     return session
 
 
@@ -51,6 +58,7 @@ async def test_recommend_success():
 
     mapping_result = MagicMock()
     mapping_result.mappings.return_value.all.return_value = []
+    mapping_result.mappings.return_value.first.return_value = None
     mock_session.execute = AsyncMock(return_value=mapping_result)
     mock_session.commit = AsyncMock()
 
@@ -62,12 +70,15 @@ async def test_recommend_success():
     )
 
     app.dependency_overrides[get_db] = lambda: mock_session
+    app.dependency_overrides[require_current_user] = lambda: {
+        "id": 1, "preferred_budget": None, "preferred_companion_type": None, "preferred_theme_tags": [],
+    }
 
     with (
         patch("app.routers.recommend.classify_query", AsyncMock(return_value=classification)),
         patch("app.routers.recommend.search_candidate_places", AsyncMock(return_value=CANDIDATES)),
         patch("app.routers.recommend.generate_course", AsyncMock(return_value=GENERATED_COURSE)),
-        patch("app.routers.recommend.upsert_course", AsyncMock(return_value=42)),
+        patch("app.routers.recommend.upsert_course", AsyncMock(return_value=(42, 1.2))),
     ):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post(
@@ -86,12 +97,18 @@ async def test_recommend_success():
     assert len(data["stages"]) == 2
     assert len(data["stages"][0]["options"]) == 2
     assert data["stages"][0]["options"][0]["name"] == "카페A"
+    assert data["stages"][0]["options"][0]["lat"] == 37.5
+    assert data["stages"][0]["options"][0]["lng"] == 127.0
+    assert data["total_walking_distance_km"] == 1.2
     assert data["served_from"] == "LLM"
 
 
 @pytest.mark.asyncio
 async def test_recommend_invalid_query():
     app.dependency_overrides[get_db] = lambda: _make_session()
+    app.dependency_overrides[require_current_user] = lambda: {
+        "id": 1, "preferred_budget": None, "preferred_companion_type": None, "preferred_theme_tags": [],
+    }
 
     with patch(
         "app.routers.recommend.classify_query",
@@ -112,6 +129,9 @@ async def test_recommend_invalid_query():
 @pytest.mark.asyncio
 async def test_recommend_needs_clarification_when_station_unresolved():
     app.dependency_overrides[get_db] = lambda: _make_session()
+    app.dependency_overrides[require_current_user] = lambda: {
+        "id": 1, "preferred_budget": None, "preferred_companion_type": None, "preferred_theme_tags": [],
+    }
 
     classification = QueryClassification(
         theme_tags=[ThemeTag.FOOD, ThemeTag.CAFE],
@@ -222,6 +242,9 @@ async def test_recommend_parsed_input_station_name_resolves_station():
 @pytest.mark.asyncio
 async def test_recommend_no_candidates():
     app.dependency_overrides[get_db] = lambda: _make_session()
+    app.dependency_overrides[require_current_user] = lambda: {
+        "id": 1, "preferred_budget": None, "preferred_companion_type": None, "preferred_theme_tags": [],
+    }
 
     classification = QueryClassification(
         theme_tags=[ThemeTag.FOOD],
@@ -249,6 +272,9 @@ async def test_recommend_no_candidates():
 @pytest.mark.asyncio
 async def test_recommend_generation_failed():
     app.dependency_overrides[get_db] = lambda: _make_session()
+    app.dependency_overrides[require_current_user] = lambda: {
+        "id": 1, "preferred_budget": None, "preferred_companion_type": None, "preferred_theme_tags": [],
+    }
 
     classification = QueryClassification(
         theme_tags=[ThemeTag.FOOD],
@@ -271,4 +297,4 @@ async def test_recommend_generation_failed():
     app.dependency_overrides.clear()
 
     assert response.status_code == 503
-    assert response.json()["detail"]["code"] == "GENERATION_FAILED"
+    assert response.json()["detail"]["code"] == "LLM_UNAVAILABLE"
