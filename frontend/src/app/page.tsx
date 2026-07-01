@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation"
 import styles from "./page.module.css"
 import LoginButton from "@/components/LoginButton"
 import LoginGateModal from "@/components/LoginGateModal"
+import QuotaBadge, { getRemainingCount } from "@/components/QuotaBadge"
 import { useDynamicPlaceholder } from "@/hooks/useDynamicPlaceholder"
-import { getAccessToken } from "@/lib/auth"
+import { getAccessToken, isLoggedIn } from "@/lib/auth"
 
 export default function Home() {
   const router = useRouter()
@@ -16,9 +17,11 @@ export default function Home() {
 
   const placeholder = useDynamicPlaceholder(query.length > 0)
 
+  const isExhausted = isLoggedIn() && getRemainingCount() === 0
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
-    if (!query.trim() || loading) return
+    if (!query.trim() || loading || isExhausted) return
 
     if (!getAccessToken()) {
       setShowLoginGate(true)
@@ -45,6 +48,8 @@ export default function Home() {
           </p>
         </header>
 
+        <QuotaBadge />
+
         <form className={styles.form} onSubmit={handleSubmit} noValidate>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="query">
@@ -64,7 +69,7 @@ export default function Home() {
           <button
             className={`${styles.button} ${loading ? styles.buttonLoading : ""}`}
             type="submit"
-            disabled={!query.trim() || loading}
+            disabled={!query.trim() || loading || isExhausted}
           >
             {loading ? (
               <>
