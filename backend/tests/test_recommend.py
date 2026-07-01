@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 from app.main import app
 from app.core.db import get_db
+from app.core.deps import require_current_user
 from app.services.classifier import QueryClassification, InvalidQueryError, NeedsClarificationError
 from app.services.course_generator import GeneratedCourse, GeneratedStage, StageOption, CourseGenerationError
 from app.models.enums import ThemeTag, BudgetTier, CompanionType
@@ -133,6 +134,89 @@ async def test_recommend_needs_clarification_when_station_unresolved():
     body = response.json()
     assert body["status"] == "NEEDS_CLARIFICATION"
     assert "station_id" in body["missing_fields"]
+
+
+@pytest.mark.asyncio
+async def test_recommend_needs_clarification_when_station_unsupported():
+    """station_name resolves to a real row, but _resolve_station filters is_supported=false
+    (e.g. 인천공항) out, so the DB lookup returns no match and clarification is requested
+    instead of silently generating a course for an out-of-service-area station."""
+    mock_session = _make_session()
+    no_match = MagicMock()
+    no_match.mappings.return_value.first.return_value = None
+    mock_session.execute = AsyncMock(return_value=no_match)
+    app.dependency_overrides[get_db] = lambda: mock_session
+    app.dependency_overrides[require_current_user] = lambda: {
+        "id": 1, "preferred_budget": None, "preferred_companion_type": None, "preferred_theme_tags": [],
+    }
+
+    classification = QueryClassification(
+        theme_tags=[ThemeTag.FOOD],
+        station_name="인천공항1터미널",
+        budget_tier=BudgetTier.UNDER_30000,
+        companion_type=CompanionType.COUPLE,
+        head_count=1,
+    )
+
+    with patch("app.routers.recommend.classify_query", AsyncMock(return_value=classification)):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/v1/courses/recommend",
+                json={"query": "혼자 인천공항 근처에서 밥먹고싶은데 추천좀 해줘"},
+            )
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "NEEDS_CLARIFICATION"
+    assert "station_id" in body["missing_fields"]
+
+
+@pytest.mark.asyncio
+async def test_recommend_parsed_input_station_name_resolves_station():
+    """Regression: the FE clarification-retry step must be able to carry a previously
+    resolved station_name through parsed_input (not just a client-picked stationId),
+    otherwise a station resolved on the first pass gets dropped on resubmit."""
+    mock_session = _make_session()
+
+    quota_row = MagicMock()
+    quota_row.mappings.return_value.first.return_value = {"cnt": 0}
+    resolved_station = MagicMock()
+    resolved_station.mappings.return_value.first.return_value = {
+        "station_id": 127, "name": "인천공항1터미널",
+    }
+    no_cache_hit = MagicMock()
+    no_cache_hit.mappings.return_value.first.return_value = None
+    mock_session.execute = AsyncMock(side_effect=[quota_row, resolved_station, no_cache_hit])
+    mock_session.commit = AsyncMock()
+    app.dependency_overrides[get_db] = lambda: mock_session
+    app.dependency_overrides[require_current_user] = lambda: {
+        "id": 1, "preferred_budget": None, "preferred_companion_type": None, "preferred_theme_tags": [],
+    }
+
+    with (
+        patch("app.routers.recommend.search_candidate_places", AsyncMock(return_value=[])),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/v1/courses/recommend",
+                json={
+                    "query": "혼자 인천공항 근처에서 밥먹고싶은데 추천좀 해줘",
+                    "parsed_input": {
+                        "theme_tags": ["FOOD"],
+                        "budget_tier": "UNDER_30000",
+                        "companion_type": None,
+                        "head_count": 1,
+                        "station_name": "인천공항1터미널",
+                    },
+                },
+            )
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "NO_CANDIDATES"
 
 
 @pytest.mark.asyncio
