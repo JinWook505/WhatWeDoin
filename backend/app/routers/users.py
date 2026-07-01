@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.deps import require_current_user
+from app.models.enums import BudgetTier, CompanionType, DatingStage, GenderType, ThemeTag
 
 router = APIRouter(prefix="/v1/users", tags=["users"])
 
@@ -43,8 +44,41 @@ class UserUpdateRequest(BaseModel):
     @field_validator("preferred_theme_tags")
     @classmethod
     def validate_themes(cls, v: list[str] | None) -> list[str] | None:
-        if v is not None and len(v) > 5:
+        if v is None:
+            return v
+        if len(v) > 5:
             raise ValueError("테마는 최대 5개까지 선택할 수 있어요.")
+        for tag in v:
+            if tag not in ThemeTag._value2member_map_:
+                raise ValueError(f"'{tag}'는 유효한 테마가 아니에요.")
+        return v
+
+    @field_validator("preferred_companion_type")
+    @classmethod
+    def validate_companion(cls, v: str | None) -> str | None:
+        if v is not None and v not in CompanionType._value2member_map_:
+            raise ValueError(f"'{v}'는 유효한 동행 유형이 아니에요.")
+        return v
+
+    @field_validator("preferred_budget")
+    @classmethod
+    def validate_budget(cls, v: str | None) -> str | None:
+        if v is not None and v not in BudgetTier._value2member_map_:
+            raise ValueError(f"'{v}'는 유효한 예산대가 아니에요.")
+        return v
+
+    @field_validator("gender")
+    @classmethod
+    def validate_gender(cls, v: str | None) -> str | None:
+        if v is not None and v not in GenderType._value2member_map_:
+            raise ValueError(f"'{v}'는 유효한 성별 값이 아니에요.")
+        return v
+
+    @field_validator("dating_stage")
+    @classmethod
+    def validate_dating_stage(cls, v: str | None) -> str | None:
+        if v is not None and v not in DatingStage._value2member_map_:
+            raise ValueError(f"'{v}'는 유효한 연애 단계가 아니에요.")
         return v
 
 
@@ -120,8 +154,14 @@ async def update_me(
         params["pct"] = body.preferred_companion_type
 
     if body.preferred_theme_tags is not None:
-        set_parts.append("preferred_theme_tags = CAST(:ptt AS theme_tag[])")
-        params["ptt"] = "{" + ",".join(body.preferred_theme_tags) + "}"
+        # asyncpg cannot bind a Python str to an ARRAY(enum) target via :param —
+        # it expects a native sequence. Values are already validated against
+        # ThemeTag above, so inlining as literals is safe (see course_generator.py).
+        if body.preferred_theme_tags:
+            tag_literals = ", ".join(f"'{t}'::theme_tag" for t in body.preferred_theme_tags)
+            set_parts.append(f"preferred_theme_tags = ARRAY[{tag_literals}]")
+        else:
+            set_parts.append("preferred_theme_tags = ARRAY[]::theme_tag[]")
 
     if body.preferred_budget is not None:
         set_parts.append("preferred_budget = CAST(:pb AS budget_tier)")
