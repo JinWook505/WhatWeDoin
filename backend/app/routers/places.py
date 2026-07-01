@@ -9,6 +9,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
+from app.core.deps import get_current_user_optional
 from app.models.place import Place
 from app.models.place_report import PlaceRatingReport
 
@@ -60,9 +61,12 @@ async def report_place(
     body: PlaceReportRequest,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: dict | None = Depends(get_current_user_optional),
 ) -> PlaceReportResponse:
     ip_hash = _ip_hash(request)
     _check_rate_limit(ip_hash)
+
+    user_id = current_user["id"] if current_user else None
 
     place = await db.get(Place, place_id)
     if place is None:
@@ -74,7 +78,26 @@ async def report_place(
     if body.rating is not None:
         rating_x2 = round(body.rating * 2)
 
-        existing = await db.get(PlaceRatingReport, (ip_hash, place_id))
+        if user_id:
+            existing = (
+                await db.execute(
+                    select(PlaceRatingReport).where(
+                        PlaceRatingReport.user_id == user_id,
+                        PlaceRatingReport.place_id == place_id,
+                    )
+                )
+            ).scalar_one_or_none()
+        else:
+            existing = (
+                await db.execute(
+                    select(PlaceRatingReport).where(
+                        PlaceRatingReport.ip_hash == ip_hash,
+                        PlaceRatingReport.place_id == place_id,
+                        PlaceRatingReport.user_id.is_(None),
+                    )
+                )
+            ).scalar_one_or_none()
+
         if existing is not None:
             # 이전 rating 차감 후 새 값 반영 (이중 반영 방지)
             place.user_rating_sum = place.user_rating_sum - existing.rating_x2 + rating_x2
@@ -83,7 +106,8 @@ async def report_place(
             place.user_rating_sum += rating_x2
             place.user_rating_count += 1
             db.add(PlaceRatingReport(
-                ip_hash=ip_hash,
+                user_id=user_id,
+                ip_hash=None if user_id else ip_hash,
                 place_id=place_id,
                 rating_x2=rating_x2,
             ))
