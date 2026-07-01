@@ -62,11 +62,26 @@ export default function Home() {
           </div>
 
           <button
-            className={styles.button}
+            className={`${styles.button} ${loading ? styles.buttonLoading : ""}`}
             type="submit"
             disabled={!query.trim() || loading}
           >
-            {loading ? "코스 생성 중..." : "AI 코스 추천받기"}
+            {loading ? (
+              <>
+                <svg
+                  className={styles.spinner}
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <circle cx="8" cy="8" r="6" stroke="currentColor" strokeOpacity="0.3" strokeWidth="2" />
+                  <path d="M8 2a6 6 0 0 1 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                코스 생성 중...
+              </>
+            ) : "AI 코스 추천받기"}
           </button>
           <a href="/courses" className={styles.exploreLink}>
             코스 탐색하기 →

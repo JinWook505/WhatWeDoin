@@ -1,4 +1,4 @@
-import { recommend } from "@/lib/api"
+import { recommend, ApiError } from "@/lib/api"
 import ResultClient from "@/components/ResultClient"
 import styles from "./page.module.css"
 
@@ -22,15 +22,22 @@ export default async function ResultPage({ searchParams }: Props) {
 
   let data = null
   let errorMessage: string | null = null
+  let errorCode: string | undefined
   let errorStatus = 0
+  let dailyRemaining: number | null = null
 
   try {
     const res = await recommend(q)
     data = res.data
+    dailyRemaining = res.daily_remaining ?? null
   } catch (err: unknown) {
-    if (err instanceof Error) {
+    if (err instanceof ApiError) {
       errorMessage = err.message
-      errorStatus = (err as { status?: number }).status ?? 500
+      errorStatus = err.status
+      errorCode = err.code
+    } else if (err instanceof Error) {
+      errorMessage = err.message
+      errorStatus = 500
     }
   }
 
@@ -40,6 +47,16 @@ export default async function ResultPage({ searchParams }: Props) {
         <p className={styles.limitTitle}>오늘 추천 한도를 모두 사용했어요</p>
         <p className={styles.limitSub}>KST 자정에 초기화됩니다. 내일 다시 이용해주세요.</p>
         <a href="/" className={styles.back}>← 홈으로</a>
+      </div>
+    )
+  }
+
+  if (errorCode === "INVALID_QUERY") {
+    return (
+      <div className={styles.centered}>
+        <p className={styles.limitTitle}>질문을 조금 더 구체적으로 써줘요</p>
+        <p className={styles.limitSub}>{errorMessage ?? "지하철역 이름과 어떻게 놀고 싶은지를 포함해주세요."}</p>
+        <a href="/" className={styles.back}>← 다시 쓰기</a>
       </div>
     )
   }
@@ -56,7 +73,7 @@ export default async function ResultPage({ searchParams }: Props) {
 
   return (
     <div className={styles.page}>
-      <ResultClient initialData={data} query={q} />
+      <ResultClient initialData={data} query={q} dailyRemaining={dailyRemaining} />
     </div>
   )
 }

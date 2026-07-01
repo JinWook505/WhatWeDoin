@@ -44,6 +44,7 @@ export interface RecommendResponse {
   success: boolean
   data: CourseData | null
   error: string | null
+  daily_remaining?: number | null
 }
 
 export class ApiError extends Error {
@@ -69,12 +70,15 @@ export async function searchStations(q: string): Promise<StationResult[]> {
 export async function recommend(
   query: string,
   excludePlaceIds: number[] = [],
+  idempotencyKey?: string,
 ): Promise<RecommendResponse> {
   const token = typeof window !== "undefined" ? getAccessToken() : null
+  const ikey = idempotencyKey ?? crypto.randomUUID()
   const res = await fetch(`${API_URL}/v1/courses/recommend`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "Idempotency-Key": ikey,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({
