@@ -1,9 +1,27 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.routers import auth, courses, health, places, recommend, reviews, stations, users
+from app.services.llm.base import LLMUnavailableError
 
 app = FastAPI(title="WhatWeDoin API")
+
+
+@app.exception_handler(LLMUnavailableError)
+async def llm_unavailable_handler(request: Request, exc: LLMUnavailableError) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={
+            "success": False,
+            "data": None,
+            "error": {
+                "code": "LLM_UNAVAILABLE",
+                "message": "AI 서비스에 일시적인 문제가 있어요. 잠시 후 다시 시도해 주세요.",
+                "retry_after": 30,
+            },
+        },
+    )
 
 app.include_router(health.router)
 app.include_router(auth.router)

@@ -2,6 +2,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
 
+class LLMUnavailableError(Exception):
+    """Raised when the LLM provider is temporarily unavailable (API error, rate limit, etc.)."""
+
+
 @dataclass
 class LLMMessage:
     role: str  # "user" | "assistant" | "system"
