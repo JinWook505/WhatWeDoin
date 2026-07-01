@@ -99,11 +99,6 @@ class ReviewRequest(BaseModel):
         return v
 
 
-class ReportRequest(BaseModel):
-    reason: str
-    comment: str | None = None
-
-
 # ---------------------------------------------------------------------------
 # POST /v1/courses/{course_id}/reviews  (upsert)
 # ---------------------------------------------------------------------------
@@ -327,46 +322,3 @@ async def delete_my_review(
     await db.commit()
 
     return {"success": True, "data": {"deleted": True}, "error": None}
-
-
-# ---------------------------------------------------------------------------
-# POST /v1/courses/{course_id}/reviews/{review_id}/report
-# ---------------------------------------------------------------------------
-
-report_router = APIRouter(prefix="/v1/courses/{course_id}/reviews/{review_id}/report", tags=["reviews"])
-
-
-@report_router.post("")
-async def report_review(
-    course_id: int,
-    review_id: int,
-    body: ReportRequest,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict | None = Depends(get_current_user_optional),
-):
-    user_id = current_user["id"] if current_user else None
-    ip = _ip_hash(request) if not user_id else None
-
-    # Verify review belongs to course
-    exists = (
-        await db.execute(
-            text("SELECT 1 FROM course_reviews WHERE id=:rid AND course_id=:cid"),
-            {"rid": review_id, "cid": course_id},
-        )
-    ).scalar()
-    if not exists:
-        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "리뷰를 찾을 수 없어요."})
-
-    await db.execute(
-        text("""
-            INSERT INTO course_review_reports (review_id, user_id, ip_hash, reason, comment)
-            VALUES (:rid, :uid, :ip, CAST(:reason AS report_reason), :comment)
-            ON CONFLICT DO NOTHING
-        """),
-        {"rid": review_id, "uid": user_id, "ip": ip,
-         "reason": body.reason, "comment": body.comment},
-    )
-    await db.commit()
-
-    return {"success": True, "data": {"recorded": True}, "error": None}
