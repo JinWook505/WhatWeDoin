@@ -69,7 +69,9 @@ export default function PlaceCard({ place, courseId, isExcluded = false, onToggl
 
           {hasHours(place.business_hours) ? (
             <p className={styles.hours}>
-              {JSON.stringify(place.business_hours)}
+              {typeof place.business_hours === "string"
+                ? place.business_hours
+                : JSON.stringify(place.business_hours)}
             </p>
           ) : (
             <span className={styles.noHours}>영업시간 미등록</span>

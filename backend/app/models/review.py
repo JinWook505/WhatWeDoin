@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Enum, SmallInteger, String, TIMESTAMP, text
+from sqlalchemy import BigInteger, Enum, ForeignKey, SmallInteger, String, TIMESTAMP, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -10,8 +10,8 @@ class CourseReview(Base):
     __tablename__ = "course_reviews"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    course_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    user_id: Mapped[int | None] = mapped_column(BigInteger)
+    course_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("courses.course_id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
     ip_hash: Mapped[str | None] = mapped_column(String(64))
     score: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     comment: Mapped[str | None] = mapped_column(String)
@@ -28,8 +28,8 @@ class CourseReviewReport(Base):
     __tablename__ = "course_review_reports"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    review_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    user_id: Mapped[int | None] = mapped_column(BigInteger)
+    review_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("course_reviews.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
     ip_hash: Mapped[str | None] = mapped_column(String(64))
     reason: Mapped[str] = mapped_column(
         Enum(ReportReason, name="report_reason"), nullable=False

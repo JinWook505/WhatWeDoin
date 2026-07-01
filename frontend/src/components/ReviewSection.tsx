@@ -114,9 +114,12 @@ export default function ReviewSection({ courseId }: Props) {
         {reviews.map((r) => (
           <li key={r.review_id} className={styles.card}>
             <div className={styles.cardTop}>
-              <span className={styles.badge} data-score={r.score}>
-                {r.score}점
-              </span>
+              <div className={styles.cardTopLeft}>
+                <span className={styles.author}>{r.author_name}</span>
+                <span className={styles.badge} data-score={r.score}>
+                  {r.score}점
+                </span>
+              </div>
               {r.is_mine && (
                 <button
                   className={styles.deleteBtn}

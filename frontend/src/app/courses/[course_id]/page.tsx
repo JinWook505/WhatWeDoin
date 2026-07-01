@@ -1,5 +1,6 @@
 import styles from "./page.module.css"
 import ReviewSection from "@/components/ReviewSection"
+import PlaceReportButton from "@/components/PlaceReportButton"
 import { THEME_TAG_KO, BUDGET_TIER_KO, COMPANION_TYPE_KO } from "@/lib/enumOptions"
 
 const API_URL =
@@ -108,6 +109,7 @@ export default async function CourseDetailPage({
               {p.walking_distance_to_next_km != null && (
                 <p className={styles.walk}>↓ 도보 {p.walking_distance_to_next_km.toFixed(1)} km</p>
               )}
+              <PlaceReportButton placeId={p.place_id} placeName={p.name} />
             </div>
           </li>
         ))}

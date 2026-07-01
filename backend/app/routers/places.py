@@ -32,7 +32,7 @@ def _check_rate_limit(ip_hash: str) -> None:
 
 
 class PlaceReportRequest(BaseModel):
-    business_hours: dict[str, Any] | None = None
+    business_hours_text: str | None = None
     price_range: str | None = None
     rating: float | None = None
 
@@ -92,8 +92,8 @@ async def report_place(
         if rating_count > 0:
             avg_rating = round(place.user_rating_sum / 2.0 / rating_count, 1)
 
-    if body.business_hours is not None:
-        place.business_hours = body.business_hours
+    if body.business_hours_text is not None:
+        place.business_hours = body.business_hours_text
 
     if body.price_range is not None:
         place.price_range = body.price_range

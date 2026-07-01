@@ -22,6 +22,7 @@ from app.services.cache_ratelimit import (
     record_request,
     set_course_cache,
 )
+from app.models.category_labels import place_category_label
 from app.models.enums import BudgetTier, CompanionType, ThemeTag
 from app.services.classifier import (
     InvalidQueryError,
@@ -400,7 +401,7 @@ async def recommend(
                 order=idx + 1,
                 place_id=pid,
                 name=p.get("name", ""),
-                category=p.get("category"),
+                category=place_category_label(p.get("category")),
                 address=p.get("address"),
                 business_hours=p.get("business_hours"),
                 price_range=p.get("price_range"),
@@ -486,7 +487,7 @@ async def _build_response_from_course_id(
             "order": p["visit_order"],
             "place_id": p["place_id"],
             "name": p["name"],
-            "category": p["category"],
+            "category": place_category_label(p["category"]),
             "address": p["address"],
             "business_hours": p["business_hours"],
             "price_range": p["price_range"],

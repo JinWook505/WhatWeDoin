@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Enum, Integer, Numeric, SmallInteger, String, TIMESTAMP, text
+from sqlalchemy import BigInteger, Enum, ForeignKey, Integer, Numeric, SmallInteger, String, TIMESTAMP, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -10,7 +10,7 @@ class Course(Base):
     __tablename__ = "courses"
 
     course_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    station_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    station_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stations.station_id"), nullable=False)
     theme_tags: Mapped[list[str]] = mapped_column(
         ARRAY(Enum(ThemeTag, name="theme_tag")),
         nullable=False,
@@ -43,9 +43,9 @@ class Course(Base):
 class CoursePlaces(Base):
     __tablename__ = "course_places"
 
-    course_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    course_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("courses.course_id"), primary_key=True)
     visit_order: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
-    place_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    place_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("places.place_id"), nullable=False)
     description: Mapped[str | None] = mapped_column(String)
     walking_distance_to_next_km: Mapped[float | None] = mapped_column(Numeric(4, 1))
     created_at: Mapped[str | None] = mapped_column(

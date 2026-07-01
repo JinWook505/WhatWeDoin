@@ -69,8 +69,12 @@
   font-family: inherit;
   resize: vertical;
   background: #fafaf9;
-  color: var(--foreground);
+  color: #1a1a1a;
   box-sizing: border-box;
+}
+
+.textarea::placeholder {
+  color: #9ca3af;
 }
 
 .textarea:focus {
@@ -96,7 +100,11 @@
   border-radius: 8px;
   font-size: 0.85rem;
   background: #fafaf9;
-  color: var(--foreground);
+  color: #1a1a1a;
+}
+
+.linkInput::placeholder {
+  color: #9ca3af;
 }
 
 .linkInput:focus { outline: none; border-color: rgba(0,0,0,0.25); }
