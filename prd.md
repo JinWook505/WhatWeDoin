@@ -843,6 +843,7 @@ GET /v1/users/me/courses?limit=20&cursor=
     "served_from": "LLM",
     "based_on_station": "합정",
     "search_radius_km": 5,
+    "total_walking_distance_km": 1.3,
     "parsed_input": {
       "location_mention": "홍대",
       "theme_tags": ["BOARD_GAME","FOOD","BAR"],
@@ -893,6 +894,8 @@ GET /v1/users/me/courses?limit=20&cursor=
 - `query` → LLM 분류(9장 2단계) → `location_mention` + `parsed_input`. 분류 불가 시 `INVALID_QUERY`, 필드 일부 부족 시 `NEEDS_CLARIFICATION`(US-A4).
 - `location_mention`으로 역 resolve 실패(매칭되는 `stations` 없음) 시에도 하드 에러가 아니라 `NEEDS_CLARIFICATION`(`missing_fields: ["station_id"]`)로 전환된다.
 - 생성 코스는 즉시 DB 저장·공개(D-10). `similar_top_courses`는 같은 역·겹치는 테마 중 베이지안 상위 N개(`recommend.similar_top_n=3`, D-13).
+- `total_walking_distance_km`: 생성된 코스 전체의 도보 이동거리 합계(`similar_top_courses[].total_walking_distance_km`와 동일한 산정 기준, US-D2). 각 옵션의 `walking_distance_from_station_km`(역→장소 거리)와는 별개 지표.
+- 각 place 옵션의 `lat`/`lng`는 `GET /v1/courses/{course_id}`(7.6c) 응답과 동일한 좌표 필드이며, 코스 결과 화면의 지도 마커 렌더링(US-D2)에 사용된다.
 - `daily_remaining`: 오늘 남은 무료 생성 횟수(`ratelimit.user_daily` 기준). 멱등 재요청·`CACHE` 적중은 미차감(D-9).
 - 한도 소진 시 `429 RATE_LIMIT_EXCEEDED`. **재추천(regenerate) API는 제거됨**(D-9) — 결과가 아쉬우면 질의어를 바꿔 다시 생성하거나 `exclude_place_ids`로 장소를 빼고 재생성(US-B3).
 
