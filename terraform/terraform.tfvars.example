@@ -1,0 +1,31 @@
+# ── §12.6 AWS / Terraform 변수 ──────────────────────────────────────────────
+# 이 파일을 복사해 terraform.tfvars 로 만든 뒤 실제 값을 채운다.
+# terraform.tfvars 는 .gitignore에 포함 — 절대 커밋하지 말 것.
+
+# 기본 설정
+aws_region     = "ap-northeast-2"
+aws_account_id = "TODO"               # AWS 계정 ID (12자리 숫자)
+project_name   = "whatwedoin"
+environment    = "dev"               # dev | prod
+
+# 네트워크
+vpc_cidr           = "10.0.0.0/16"
+availability_zones = ["ap-northeast-2a", "ap-northeast-2c"]
+
+# TLS / 도메인
+acm_certificate_arn = "TODO"         # arn:aws:acm:ap-northeast-2:ACCOUNT:certificate/...
+route53_zone_id     = "TODO"         # Route53 Hosted Zone ID (예: Z1ABCDEFGHIJKL)
+
+# ECR
+ecr_repository = "whatwedoin-api"
+
+# ECS
+ecs_cluster_name = "whatwedoin-cluster"
+ecs_task_cpu     = 512               # Fargate CPU units
+ecs_task_memory  = 1024              # Fargate memory (MiB)
+
+# RDS
+rds_instance_class = "db.t4g.micro"  # prod: db.t4g.small 이상 권장
+rds_db_name        = "whatwedoin"
+rds_username       = "TODO"          # 마스터 유저명 (예: whatwedoin_admin)
+rds_password       = "TODO"          # (secret) — AWS Secrets Manager에 별도 보관 권장
