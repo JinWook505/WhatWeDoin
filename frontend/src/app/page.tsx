@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation"
 import styles from "./page.module.css"
 import LoginButton from "@/components/LoginButton"
 import LoginGateModal from "@/components/LoginGateModal"
-import QuotaBadge, { getRemainingCount } from "@/components/QuotaBadge"
+import QuotaBadge from "@/components/QuotaBadge"
 import { useDynamicPlaceholder } from "@/hooks/useDynamicPlaceholder"
 import { getAccessToken, isLoggedIn } from "@/lib/auth"
+import { getRemainingCount } from "@/lib/quota"
 
 export default function Home() {
   const router = useRouter()

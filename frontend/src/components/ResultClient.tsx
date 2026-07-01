@@ -5,7 +5,7 @@ import { recommend, isClarificationResult, CourseData } from "@/lib/api"
 import CourseTimeline from "./CourseTimeline"
 import ReviewSection from "./ReviewSection"
 import SimilarCourses from "./SimilarCourses"
-import { incrementUsedCount } from "@/components/QuotaBadge"
+import { incrementUsedCount } from "@/lib/quota"
 import styles from "./ResultClient.module.css"
 
 interface Props {
