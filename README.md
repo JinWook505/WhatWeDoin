@@ -82,41 +82,61 @@ python scripts/etl_places.py      # 카카오 로컬 API 장소 수집
 
 ```
 WhatWeDoin/
-├── frontend/               # Next.js 16 (App Router)
+├── frontend/               # Next.js (App Router, TypeScript)
 │   └── src/
-│       ├── app/            # 페이지 (홈 · 결과 · /courses/[id])
-│       ├── components/     # CourseTimeline · PlaceCard · ReportBottomSheet
-│       └── lib/            # API 클라이언트
+│       ├── app/
+│       │   ├── page.tsx              # 홈 (역 검색 + 질의어 입력)
+│       │   ├── result/page.tsx       # 추천 결과 (SSR)
+│       │   ├── courses/page.tsx      # 코스 탐색 (필터 + 무한스크롤)
+│       │   ├── courses/[id]/page.tsx # 코스 상세
+│       │   ├── auth/callback/page.tsx# 카카오 OAuth 콜백
+│       │   └── onboarding/page.tsx   # 약관 + 개인화 온보딩
+│       ├── components/
+│       │   ├── CourseTimeline.tsx    # 코스 타임라인
+│       │   ├── PlaceCard.tsx         # 장소 카드
+│       │   ├── ReviewSection.tsx     # 리뷰 목록 + 요약
+│       │   ├── ReviewForm.tsx        # 리뷰 작성 (슬라이더)
+│       │   ├── SimilarCourses.tsx    # 유사 코스 3개
+│       │   ├── StationSearch.tsx     # 역 이름 자동완성
+│       │   ├── LoginButton.tsx       # 카카오 로그인 + 드롭다운
+│       │   ├── QuotaBadge.tsx        # 일일 잔여 횟수 배지
+│       │   ├── ErrorFallback.tsx     # 에러 유형별 안내
+│       │   ├── SkeletonCard.tsx      # shimmer 로딩 스켈레톤
+│       │   ├── DeleteAccountModal.tsx# 탈퇴 확인 모달
+│       │   └── ReportBottomSheet.tsx # 장소 제보
+│       └── lib/
+│           ├── api.ts                # API 클라이언트 전체
+│           └── auth.ts               # JWT 저장·갱신·로그아웃
 ├── backend/                # FastAPI
 │   ├── app/
-│   │   ├── core/           # config · DB 세션
-│   │   ├── models/         # SQLAlchemy ORM 모델 (전체 스키마)
-│   │   ├── routers/        # health · stations · recommend · places
+│   │   ├── core/           # config · DB 세션 · deps
+│   │   ├── routers/        # auth · users · stations · courses · reviews · recommend · places
 │   │   └── services/
-│   │       ├── llm/        # LLM Provider 추상화 (Anthropic / Gemini)
+│   │       ├── llm/               # LLM Provider 추상화 (Anthropic / Gemini)
+│   │       ├── auth.py            # 카카오 OAuth + JWT + refresh 토큰
+│   │       ├── cache_ratelimit.py # 캐시·멱등키·일일 한도 (PostgreSQL)
 │   │       ├── classifier.py      # 질의어 → theme_tags/budget/companion
-│   │       ├── course_generator.py  # LLM 코스 생성 + 환각 검증
+│   │       ├── course_generator.py# LLM 코스 생성 + 환각 검증 + 재시도
 │   │       └── place_search.py    # PostGIS 반경 검색
-│   ├── alembic/            # DB 마이그레이션 (4개)
+│   ├── alembic/            # DB 마이그레이션
 │   ├── scripts/            # seed_stations · etl_places
-│   └── tests/              # pytest 테스트 8종
-├── db/init.sql             # 초기 스키마
+│   └── tests/              # pytest 테스트 20종+
 ├── docker-compose.yml      # 루트 (PostgreSQL + PostGIS)
-├── terraform/              # AWS IaC (미구현)
-└── .github/workflows/      # CI/CD (미구현)
+├── terraform/              # AWS IaC
+└── .github/workflows/      # CI/CD
 ```
 
 ---
 
 ## 구현 순서 및 진척도
 
-> **전체 진척도: 약 40%** (Phase 1~3 완료, Phase 4~7 진행 예정)
+> **전체 진척도: 약 90%** (Phase 1~6 완료, Phase 7 인프라 진행 중)
 
 ### Phase 1 — 기반 구축 ✅ 완료
 
 | # | 내용 | SCRUM |
 |---|---|---|
-| ✅ | PostgreSQL + PostGIS DB 스키마 + Alembic 마이그레이션 (4개) | SCRUM-66 |
+| ✅ | PostgreSQL + PostGIS DB 스키마 + Alembic 마이그레이션 | SCRUM-66 |
 | ✅ | FastAPI 기본 구조 (`health`, `config`, async DB 세션) | SCRUM-65 |
 | ✅ | 역 데이터 시딩 (`stations` + `station_lines` upsert) | SCRUM-73 |
 | ✅ | 장소 ETL (카카오 로컬 REST API → `places` 적재) | SCRUM-72 |
@@ -131,64 +151,69 @@ WhatWeDoin/
 | ✅ | LLM 질의어 분류기 (`theme_tags` · `budget_tier` · `companion_type` · `head_count` 추출) | SCRUM-37 |
 | ✅ | PostGIS `ST_DWithin` 후보 장소 검색 (5km → 7km 확장) | SCRUM-38 |
 | ✅ | LLM 코스 생성 + 환각 검증 (후보 풀 외 place_id 제거·재시도) | SCRUM-38 |
-| ✅ | 추천 오케스트레이터 (`POST /v1/courses/recommend`, 캐시·멱등·한도 체크) | SCRUM-36 |
+| ✅ | 추천 오케스트레이터 (`POST /v1/courses/recommend`) | SCRUM-36 |
+| ✅ | 일일 한도 3회 + 멱등키 + 결과 캐시 (PostgreSQL, Redis 없음) | SCRUM-39 |
+| ✅ | LLM 장애 시 지수 백오프 재시도 + 503 `LLM_UNAVAILABLE` 폴백 코스 | SCRUM-43 |
+| ✅ | 동적 Placeholder API (날씨·시간대·최근 질의어) | SCRUM-34 |
 
 ### Phase 3 — 프론트엔드 핵심 UI ✅ 완료
 
 | # | 내용 | SCRUM |
 |---|---|---|
-| ✅ | 홈 화면 — 단일 텍스트 질의어 입력 (역명 자동 추출 포함) | SCRUM-45 |
+| ✅ | 홈 화면 — 역 선택 + 질의어 입력 (역명 prefix 자동 추가) | SCRUM-45 |
 | ✅ | 코스 결과 타임라인 UI + 장소 카드 | SCRUM-45 |
-| ✅ | 장소 정보 제보 바텀시트 (`ReportBottomSheet`) | SCRUM-74 |
-| ✅ | Z세대 다크 네온 디자인 리뉴얼 | — |
-| ✅ | 동네·상권명 → 근처 역 자동 매핑 (LLM 보조) | — |
+| ✅ | 장소 제외 선택 및 재생성 버튼 UI | SCRUM-41 |
+| ✅ | 로딩 스켈레톤 shimmer + SVG 스피너 | SCRUM-35 |
+| ✅ | 에러 유형별 안내 UI (401/429/503/기타) | SCRUM-42 |
+| ✅ | 동적 Placeholder 순환 훅 (`useDynamicPlaceholder`) | SCRUM-33 |
+| ✅ | 장소 정보 제보 바텀시트 | SCRUM-74 |
 
-### Phase 4 — 인증 & 사용자 관리 🔲 미구현
+### Phase 4 — 인증 & 사용자 관리 ✅ 완료
 
-| # | 내용 | 비고 |
+| # | 내용 | SCRUM |
 |---|---|---|
-| 🔲 | 카카오 OAuth → 자체 JWT 발급 (`POST /v1/auth/kakao`) | P0 |
-| 🔲 | 토큰 갱신·로그아웃 (`/auth/refresh`, `/auth/logout`) | P0 |
-| 🔲 | 온보딩 (약관 동의 + 선택 개인화 정보 입력) | P0 |
-| 🔲 | 마이페이지 (`GET/PATCH/DELETE /v1/users/me`) | P1 |
-| 🔲 | 프론트: 카카오 로그인 버튼 + 로그인 팝업 | P0 |
-| 🔲 | 비로그인 추천 시도 → 로그인 팝업 유도 | P0 |
+| ✅ | 카카오 OAuth → 자체 JWT 발급 (`POST /v1/auth/kakao`) | SCRUM-52 |
+| ✅ | 토큰 갱신·로그아웃 (`/auth/refresh`, `/auth/logout`) | SCRUM-52 |
+| ✅ | 마이페이지 (`GET/PATCH /v1/users/me`) | SCRUM-54 |
+| ✅ | 회원 탈퇴 + PIPA 익명화 (`DELETE /v1/users/me`) | SCRUM-25 |
+| ✅ | 프론트: 카카오 로그인 버튼 + `/auth/callback` + JWT 관리 | SCRUM-51 |
+| ✅ | 프론트: 온보딩 약관 동의 + 개인화 입력 2단계 | SCRUM-53 |
+| ✅ | 프론트: 탈퇴 확인 모달 + 드롭다운 메뉴 | SCRUM-55 |
 
-### Phase 5 — 코스 탐색 & 리뷰 🔲 미구현
+### Phase 5 — 코스 탐색 & 리뷰 ✅ 완료
 
-| # | 내용 | 비고 |
+| # | 내용 | SCRUM |
 |---|---|---|
-| 🔲 | 코스 목록 API (`GET /v1/courses`) — 역·테마·인원·예산 필터 + 커서 페이지네이션 | P0 |
-| 🔲 | 코스 상세 API (`GET /v1/courses/{id}`) — OG 태그 포함 | P0 |
-| 🔲 | 코스 리뷰 API (`POST/GET/DELETE /v1/courses/{id}/reviews`) — 베이지안 평균 갱신 | P0 |
-| 🔲 | 리뷰 신고 API (`POST /v1/courses/{id}/reviews/{id}/report`) | P1 |
-| 🔲 | 프론트: 메인 코스 탐색 페이지 (필터 + 목록) | P0 |
-| 🔲 | 프론트: 코스 상세 SSR 페이지 (`/courses/[id]`, OG 태그) | P0 |
-| 🔲 | 프론트: 리뷰 작성 UI (100점·5단위 슬라이더 + 댓글 + 링크) | P0 |
-| 🔲 | 비로그인 IP 리뷰 → 로그인 후 user_id 승격 병합 | P1 |
+| ✅ | 코스 목록 API (`GET /v1/courses`) — 필터 + 커서 페이지네이션 | SCRUM-50 |
+| ✅ | 코스 상세 API (`GET /v1/courses/{id}`) — OG 태그 포함 | SCRUM-46 |
+| ✅ | 코스 리뷰 API (`POST/GET/DELETE`) — 베이지안 평균 갱신 | SCRUM-48 |
+| ✅ | 리뷰 신고 API (`POST /v1/courses/{id}/reviews/{id}/report`) | SCRUM-48 |
+| ✅ | 프론트: 코스 탐색 페이지 (`/courses`, 필터 + 무한스크롤) | SCRUM-49 |
+| ✅ | 프론트: 코스 상세 페이지 (`/courses/[id]`) | SCRUM-40 |
+| ✅ | 프론트: 리뷰 작성 UI (100점·5단위 슬라이더 + 댓글 + 링크) | SCRUM-47 |
+| ✅ | 프론트: 리뷰 목록 + 내 리뷰 삭제 | SCRUM-47 |
 
-### Phase 6 — 지도 & 고도화 🔲 미구현
+### Phase 6 — 역 검색 & 고도화 ✅ 완료
 
-| # | 내용 | 비고 |
+| # | 내용 | SCRUM |
 |---|---|---|
-| 🔲 | 카카오맵 JS SDK 역 마커 선택 UI (프론트) | P0 |
-| 🔲 | 역 이름 자동완성 검색 (`GET /v1/stations/search`) 프론트 연동 | P1 |
-| 🔲 | 동적 Placeholder API (`GET /v1/recommend/placeholder`) — 날씨·시간대·최근 질문 | P1 |
-| 🔲 | OpenWeatherMap 날씨 캐시 (30분 DB 캐시) | P1 |
-| 🔲 | 추천 결과에 유사 테마 고득점 코스 3개 동반 노출 (`similar_top_courses`) | P0 |
-| 🔲 | 신선도 배치 (월 1회, `last_synced_at` 30일 초과 재동기화) | P1 |
-| 🔲 | 사후 방문 설문 (`POST /v1/courses/{id}/visit-survey`) | P2 |
-| 🔲 | 레이트 리밋 실제 적용 (일일 생성 3회 · 비로그인 리뷰 IP 상한) | P0 |
+| ✅ | 역 목록 API (`GET /v1/stations`) — bounds 필터 + 노선 조인 | SCRUM-30 |
+| ✅ | 역 검색 API (`GET /v1/stations/search`) — 자동완성 | SCRUM-32 |
+| ✅ | 프론트: 역 이름 자동완성 (`StationSearch`, 키보드 ↑↓/Enter/Esc) | SCRUM-31 |
+| ✅ | 프론트: 유사 테마 고득점 코스 3개 동반 노출 | SCRUM-40 |
+| ✅ | 프론트: 일일 잔여 횟수 배지 (`QuotaBadge`, KST 기준) | SCRUM-44 |
+| 🔲 | 카카오맵 JS SDK 역 마커 선택 UI | SCRUM-29 |
+| 🔲 | 신선도 배치 (월 1회 재동기화) | P1 |
 
-### Phase 7 — 인프라 & 배포 🔲 미구현
+### Phase 7 — 인프라 & 배포 🔲 진행 중
 
 | # | 내용 | 비고 |
 |---|---|---|
 | 🔲 | Terraform — AWS ECS + RDS + ALB (서울 리전) | SCRUM-67 |
-| ✅ | GitHub Actions CI/CD — ECR → ECS (백엔드) + S3+CloudFront (프론트) | SCRUM-68 |
-| 🔲 | Langfuse LLM 관찰성 연동 (프롬프트·토큰·비용 트레이스) | P1 |
-| 🔲 | Sentry 예외 추적 | P1 |
+| ✅ | GitHub Actions CI/CD — ECR → ECS + S3+CloudFront | SCRUM-68 |
 | 🔲 | AWS Secrets Manager 시크릿 관리 | P0 |
+| 🔲 | Sentry 예외 추적 | P1 |
+| 🔲 | Langfuse LLM 관찰성 연동 | P1 |
 
 ---
 
@@ -197,24 +222,24 @@ WhatWeDoin/
 | Method | Path | 상태 | 설명 |
 |---|---|---|---|
 | `GET` | `/health` | ✅ | 헬스체크 |
-| `GET` | `/v1/stations` | ✅ | 지도 뷰포트 내 역 마커 조회 |
+| `POST` | `/v1/auth/kakao` | ✅ | 카카오 로그인 → JWT 발급 |
+| `POST` | `/v1/auth/refresh` | ✅ | access 토큰 갱신 (refresh 회전) |
+| `POST` | `/v1/auth/logout` | ✅ | 로그아웃 (전체 토큰 폐기) |
+| `GET` | `/v1/users/me` | ✅ | 내 정보 조회 |
+| `PATCH` | `/v1/users/me` | ✅ | 내 정보·취향 수정 |
+| `DELETE` | `/v1/users/me` | ✅ | 회원 탈퇴 (PIPA 익명화) |
+| `GET` | `/v1/stations` | ✅ | 역 목록 조회 (bounds 필터 + 노선) |
 | `GET` | `/v1/stations/search` | ✅ | 역 이름 자동완성 |
-| `POST` | `/v1/courses/recommend` | ✅ | AI 코스 추천 (로그인 필수) |
+| `GET` | `/v1/stations/{id}` | ✅ | 단일 역 조회 |
+| `GET` | `/v1/courses` | ✅ | 코스 목록 (필터 + 커서 페이지네이션) |
+| `GET` | `/v1/courses/{id}` | ✅ | 코스 상세 (OG 태그 포함) |
+| `POST` | `/v1/courses/recommend` | ✅ | AI 코스 추천 (로그인 필수, 일 3회) |
+| `GET` | `/v1/recommend/placeholder` | ✅ | 동적 입력창 placeholder (날씨·시간대) |
+| `POST` | `/v1/courses/{id}/reviews` | ✅ | 리뷰 등록/수정 (upsert) |
+| `GET` | `/v1/courses/{id}/reviews` | ✅ | 리뷰 목록 (커서 페이지네이션) |
+| `DELETE` | `/v1/courses/{id}/reviews/me` | ✅ | 내 리뷰 삭제 |
+| `POST` | `/v1/courses/{id}/reviews/{rid}/report` | ✅ | 리뷰 신고 |
 | `POST` | `/v1/places/{id}/report` | ✅ | 장소 정보 사용자 제보 |
-| `GET` | `/v1/courses` | 🔲 | 메인 코스 목록 + 필터 |
-| `GET` | `/v1/courses/{id}` | 🔲 | 코스 상세 (SSR 데이터 소스) |
-| `POST` | `/v1/courses/{id}/reviews` | 🔲 | 리뷰 등록/수정 |
-| `GET` | `/v1/courses/{id}/reviews` | 🔲 | 리뷰 목록 |
-| `DELETE` | `/v1/courses/{id}/reviews/me` | 🔲 | 내 리뷰 삭제 |
-| `POST` | `/v1/courses/{id}/reviews/{rid}/report` | 🔲 | 리뷰 신고 |
-| `GET` | `/v1/recommend/placeholder` | 🔲 | 동적 입력창 placeholder |
-| `POST` | `/v1/courses/{id}/visit-survey` | 🔲 | 사후 방문 설문 |
-| `POST` | `/v1/auth/kakao` | 🔲 | 카카오 로그인 → JWT 발급 |
-| `POST` | `/v1/auth/refresh` | 🔲 | access 토큰 갱신 |
-| `POST` | `/v1/auth/logout` | 🔲 | 로그아웃 |
-| `GET` | `/v1/users/me` | 🔲 | 내 정보 조회 |
-| `PATCH` | `/v1/users/me` | 🔲 | 내 정보 수정 |
-| `DELETE` | `/v1/users/me` | 🔲 | 회원 탈퇴 |
 
 ---
 
