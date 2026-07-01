@@ -31,6 +31,7 @@ app.include_router(reviews.router)
 app.include_router(reviews.report_router)
 app.include_router(places.router)
 app.include_router(recommend.router)
+app.include_router(recommend.placeholder_router)
 app.include_router(users.router)
 
 Instrumentator().instrument(app).expose(app)

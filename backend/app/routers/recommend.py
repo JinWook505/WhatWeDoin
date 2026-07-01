@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import asyncio
+import logging
+from datetime import datetime, timezone
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.db import get_db as get_session
-from app.core.deps import require_current_user
+from app.core.deps import get_current_user_optional, require_current_user
 from app.services.cache_ratelimit import (
     check_daily_quota,
     get_course_cache,
@@ -25,7 +30,134 @@ from app.services.course_generator import (
 )
 from app.services.place_search import search_candidate_places
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/v1/courses", tags=["recommend"])
+
+# ---------------------------------------------------------------------------
+# Placeholder texts: (temp_tier, weather_main) → list of examples
+# Temp tiers: "cold"(<10°C), "cool"(10-20), "warm"(20-28), "hot"(≥28)
+# Weather mains: "Clear", "Clouds", "Rain", "Snow", "other"
+# ---------------------------------------------------------------------------
+_PLACEHOLDERS: dict[tuple[str, str], list[str]] = {
+    ("cold", "Clear"): [
+        "예: 친구랑 강남역에서 따뜻한 카페 투어하다 저녁 먹고 싶어",
+        "예: 혼자 홍대에서 핫초코 마시며 갤러리 구경하고 싶어",
+    ],
+    ("cold", "Clouds"): [
+        "예: 커플이랑 신촌역 근처 실내 데이트 코스 짜줘",
+        "예: 친구들이랑 건대입구에서 실내 놀거리 찾고 있어",
+    ],
+    ("cold", "Rain"): [
+        "예: 비 오는 날 혼자 을지로에서 힙한 카페 탐방하고 싶어",
+        "예: 커플이랑 비 피하면서 인사동에서 놀 수 있는 코스 추천해줘",
+    ],
+    ("cold", "Snow"): [
+        "예: 눈 오는 날 여의도에서 낭만적인 데이트 코스 짜줘",
+        "예: 친구들이랑 북촌에서 설경 구경하며 따뜻하게 먹을 곳 찾아줘",
+    ],
+    ("cool", "Clear"): [
+        "예: 가족이랑 경복궁역에서 나들이 코스 짜줘. 애기도 있어",
+        "예: 친구들이랑 한강공원 근처에서 피크닉하고 맛집 가고 싶어",
+    ],
+    ("cool", "Clouds"): [
+        "예: 혼자 성수동에서 힙한 카페 투어하며 산책하고 싶어",
+        "예: 커플이랑 이태원역에서 브런치 먹고 구경하고 싶어",
+    ],
+    ("cool", "Rain"): [
+        "예: 비 오는 날 혼자 종로에서 조용히 책방 카페 탐방하고 싶어",
+        "예: 친구랑 합정역에서 카페 돌다가 저녁 먹고 싶어",
+    ],
+    ("cool", "other"): [
+        "예: 친구랑 마포구에서 오후 시간 알차게 보내고 싶어",
+        "예: 혼자 강남 카페 투어하며 책 읽고 싶어",
+    ],
+    ("warm", "Clear"): [
+        "예: 친구들이랑 홍대입구역에서 저녁 먹고 놀다가 집 가고 싶어. 예산 15000원",
+        "예: 커플이랑 한강공원에서 선셋 보고 야경 즐기고 싶어",
+    ],
+    ("warm", "Clouds"): [
+        "예: 혼자 성수역에서 힙한 공간 탐방하고 점심 먹고 싶어",
+        "예: 가족이랑 잠실역 근처 놀이동산 말고 다른 코스 짜줘",
+    ],
+    ("warm", "Rain"): [
+        "예: 비 와도 즐길 수 있는 신림역 데이트 코스 짜줘",
+        "예: 비 오는 날 친구랑 강남에서 실내 액티비티 찾고 있어",
+    ],
+    ("warm", "other"): [
+        "예: 친구들이랑 건대에서 점심 먹고 카페 갔다가 저녁도 먹고 싶어",
+        "예: 커플이랑 낙산공원 근처에서 데이트하고 싶어",
+    ],
+    ("hot", "Clear"): [
+        "예: 더운 날 친구랑 시원한 곳 위주로 신사역 코스 짜줘",
+        "예: 혼자 강남역에서 냉방 잘 되는 카페 + 쇼핑 코스",
+    ],
+    ("hot", "Clouds"): [
+        "예: 더운 날 커플이랑 실내 위주로 홍대 코스 짜줘",
+        "예: 친구들이랑 에어컨 빵빵한 데서 놀 수 있는 코스 추천해줘",
+    ],
+    ("hot", "Rain"): [
+        "예: 폭우에 갇혀도 즐길 수 있는 실내 코스 짜줘",
+        "예: 여름 장마철에 커플이랑 홍대에서 실내 데이트",
+    ],
+    ("hot", "other"): [
+        "예: 더운 여름 친구랑 시원하게 놀 수 있는 코스 추천해줘",
+        "예: 커플이랑 실내 위주 데이트 코스 짜줘. 인당 30000원",
+    ],
+}
+
+_DEFAULT_PLACEHOLDERS = [
+    "예: 친구들이랑 학교 끝나고 홍대입구역에서 놀다가 저녁먹고 집 가고 싶어. 예산은 인당 15000원이야.",
+    "예: 혼자 성수동에서 조용히 카페 투어하고 싶어",
+    "예: 커플이랑 이태원에서 저녁 먹고 야경 보고 싶어",
+]
+
+
+def _temp_tier(temp_c: float) -> str:
+    if temp_c < 10:
+        return "cold"
+    if temp_c < 20:
+        return "cool"
+    if temp_c < 28:
+        return "warm"
+    return "hot"
+
+
+def _time_based_placeholders() -> list[str]:
+    hour = datetime.now(timezone.utc).hour + 9  # KST
+    hour %= 24
+    if 6 <= hour < 11:
+        return ["예: 친구랑 홍대에서 브런치 먹고 카페 투어하고 싶어"]
+    if 11 <= hour < 15:
+        return ["예: 점심 먹고 친구랑 성수동에서 오후 보내고 싶어"]
+    if 15 <= hour < 19:
+        return ["예: 퇴근하고 친구랑 강남에서 저녁 먹고 놀고 싶어"]
+    return ["예: 친구들이랑 홍대에서 밤에 놀 수 있는 코스 짜줘"]
+
+
+async def _fetch_weather() -> dict | None:
+    """Fetch Seoul weather from OpenWeatherMap. Returns None on any failure."""
+    api_key = settings.OPENWEATHER_API_KEY
+    if not api_key:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(
+                "https://api.openweathermap.org/data/2.5/weather",
+                params={"q": "Seoul,KR", "appid": api_key, "units": "metric", "lang": "kr"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return {
+                "temp": round(data["main"]["temp"], 1),
+                "feels_like": round(data["main"]["feels_like"], 1),
+                "description": data["weather"][0]["description"],
+                "main": data["weather"][0]["main"],
+                "icon": data["weather"][0]["icon"],
+            }
+    except Exception as exc:
+        logger.warning("Weather API failed: %s", exc)
+        return None
 
 
 class RecommendRequest(BaseModel):
@@ -348,3 +480,56 @@ async def _fetch_place_map(session: AsyncSession, place_ids: list[int]) -> dict[
         {"ids": place_ids},
     )
     return {row["place_id"]: dict(row) for row in result.mappings().all()}
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/recommend/placeholder
+# ---------------------------------------------------------------------------
+
+placeholder_router = APIRouter(prefix="/v1/recommend", tags=["recommend"])
+
+
+@placeholder_router.get("/placeholder")
+async def get_placeholder(
+    session: AsyncSession = Depends(get_session),
+    current_user: dict | None = Depends(get_current_user_optional),
+):
+    """Return dynamic placeholder text and current Seoul weather.
+
+    Fallback chain: OpenWeatherMap → time-based → static default.
+    """
+    weather = await _fetch_weather()
+
+    if weather:
+        tier = _temp_tier(weather["temp"])
+        main = weather["main"] if weather["main"] in ("Clear", "Clouds", "Rain", "Snow") else "other"
+        key = (tier, main)
+        candidates = _PLACEHOLDERS.get(key) or _PLACEHOLDERS.get((tier, "other")) or _DEFAULT_PLACEHOLDERS
+    else:
+        candidates = _time_based_placeholders()
+
+    # Recent queries for logged-in users
+    recent_queries: list[str] = []
+    if current_user:
+        rows = (
+            await session.execute(
+                text("""
+                    SELECT DISTINCT query_text
+                    FROM courses
+                    WHERE query_text IS NOT NULL
+                    ORDER BY query_text
+                    LIMIT 3
+                """),
+            )
+        ).mappings().all()
+        recent_queries = [r["query_text"] for r in rows if r["query_text"]]
+
+    return {
+        "success": True,
+        "data": {
+            "placeholders": candidates,
+            "weather": weather,
+            "recent_queries": recent_queries,
+        },
+        "error": None,
+    }
