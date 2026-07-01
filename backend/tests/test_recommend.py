@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 from app.main import app
 from app.core.db import get_db
-from app.services.classifier import QueryClassification, InvalidQueryError
+from app.services.classifier import QueryClassification, InvalidQueryError, NeedsClarificationError
 from app.services.course_generator import GeneratedCourse, CourseGenerationError
 from app.models.enums import ThemeTag, BudgetTier, CompanionType
 

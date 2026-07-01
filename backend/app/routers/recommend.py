@@ -1,21 +1,39 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db as get_session
 from app.core.deps import require_current_user
-from app.services.classifier import InvalidQueryError, classify_query
+from app.models.enums import BudgetTier, CompanionType, ThemeTag
+from app.services.classifier import (
+    InvalidQueryError,
+    NeedsClarificationError,
+    QueryClassification,
+    classify_query,
+)
 from app.services.course_generator import (
     CourseGenerationError,
     generate_course,
     upsert_course,
 )
+from app.services.cache_ratelimit import (
+    build_cache_key,
+    check_user_daily_ratelimit,
+    get_cached_course,
+    record_recommendation_request,
+    set_cached_course,
+)
+from app.services.llm import LLMUnavailableError
 from app.services.place_search import search_candidate_places
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/courses", tags=["recommend"])
 
@@ -24,6 +42,7 @@ class RecommendRequest(BaseModel):
     station_id: int | None = None
     query: str
     exclude_place_ids: list[int] = []
+    parsed_input: dict | None = None  # pre-filled classification for re-request after NEEDS_CLARIFICATION
 
 
 class PlaceDetail(BaseModel):
@@ -59,14 +78,50 @@ async def recommend(
     session: AsyncSession = Depends(get_session),
     current_user: dict = Depends(require_current_user),
 ):
-    # 1. Classify
-    try:
-        classification = await classify_query(req.query)
-    except InvalidQueryError as e:
+    # 0. Daily rate-limit check (SCRUM-39)
+    user_id = current_user["id"]
+    if not await check_user_daily_ratelimit(session, user_id):
         raise HTTPException(
-            status_code=400,
-            detail={"code": "INVALID_QUERY", "message": str(e)},
+            status_code=429,
+            detail={
+                "code": "RATE_LIMIT_EXCEEDED",
+                "message": "오늘 AI 추천 횟수를 모두 사용했어요. KST 자정에 초기화됩니다.",
+                "retry_after": "tomorrow",
+            },
         )
+
+    # 1. Classify — skip if pre-filled parsed_input provided (re-request after NEEDS_CLARIFICATION)
+    if req.parsed_input is not None:
+        classification = _build_classification_from_parsed_input(req.parsed_input)
+    else:
+        try:
+            classification = await classify_query(req.query)
+        except NeedsClarificationError as e:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "NEEDS_CLARIFICATION",
+                    "partial_parsed_input": e.partial_parsed_input,
+                    "missing_fields": e.missing_fields,
+                },
+            )
+        except InvalidQueryError as e:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "INVALID_QUERY", "message": str(e)},
+            )
+        except LLMUnavailableError as e:
+            logger.error("LLM unavailable during classification: %s", e)
+            fallback = await _get_fallback_courses(session, req.station_id, [])
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "LLM_UNAVAILABLE",
+                    "message": "AI 서비스에 일시적인 문제가 있어요. 잠시 후 다시 시도해 주세요.",
+                    "retry_after": 30,
+                    "fallback_courses": fallback,
+                },
+            )
 
     theme_tags = [t.value for t in classification.theme_tags]
     budget_tier = (
@@ -98,6 +153,25 @@ async def recommend(
         station_id = station_row["station_id"]
         station_name_resolved = station_row["name"]
 
+    # 1c. Cache lookup (SCRUM-39) — after station & params resolved
+    cache_key = build_cache_key(station_id, theme_tags, budget_tier, companion_type)
+    if not req.exclude_place_ids:  # skip cache when exclusions active
+        cached = await get_cached_course(session, cache_key)
+        if cached:
+            await record_recommendation_request(
+                session,
+                user_id=user_id,
+                station_id=station_id,
+                query_text=req.query,
+                parsed_input=None,
+                exclude_place_ids=[],
+                served_from="CACHE",
+                idempotency_key=None,
+                course_id=cached.get("course_id"),
+            )
+            await session.commit()
+            return {"success": True, "data": {**cached, "served_from": "CACHE"}, "error": None}
+
     # 2. Fetch candidates (shared between generate + upsert)
     candidates = await search_candidate_places(
         session,
@@ -128,6 +202,18 @@ async def recommend(
             status_code=404,
             detail={"code": "NO_CANDIDATES", "message": str(e)},
         )
+    except LLMUnavailableError as e:
+        logger.error("LLM unavailable during course generation: %s", e)
+        fallback = await _get_fallback_courses(session, station_id, theme_tags)
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "LLM_UNAVAILABLE",
+                "message": "AI 서비스에 일시적인 문제가 있어요. 잠시 후 다시 시도해 주세요.",
+                "retry_after": 30,
+                "fallback_courses": fallback,
+            },
+        )
 
     if course is None:
         raise HTTPException(
@@ -145,6 +231,19 @@ async def recommend(
         companion_type=companion_type,
         query_text=req.query,
         candidates=candidates,
+    )
+
+    # 4b. Record LLM request (SCRUM-39)
+    await record_recommendation_request(
+        session,
+        user_id=user_id,
+        station_id=station_id,
+        query_text=req.query,
+        parsed_input=req.parsed_input,
+        exclude_place_ids=req.exclude_place_ids,
+        served_from="LLM",
+        idempotency_key=None,
+        course_id=course_id,
     )
 
     # 5. Fetch place details for response
@@ -173,21 +272,24 @@ async def recommend(
             )
         )
 
-    return {
-        "success": True,
-        "data": CourseResponse(
-            course_id=course_id,
-            title=course.title,
-            description=course.description,
-            station_name=station_name_resolved or classification.station_name,
-            theme_tags=theme_tags,
-            places=places_out,
-            total_walking_distance_km=None,
-            similar_top_courses=[],
-            served_from="LLM",
-        ).model_dump(),
-        "error": None,
-    }
+    course_out = CourseResponse(
+        course_id=course_id,
+        title=course.title,
+        description=course.description,
+        station_name=station_name_resolved or classification.station_name,
+        theme_tags=theme_tags,
+        places=places_out,
+        total_walking_distance_km=None,
+        similar_top_courses=[],
+        served_from="LLM",
+    ).model_dump()
+
+    # Store in cache for future requests with same params (SCRUM-39)
+    if not req.exclude_place_ids:
+        await set_cached_course(session, cache_key, course_out)
+
+    await session.commit()
+    return {"success": True, "data": course_out, "error": None}
 
 
 async def _resolve_station(session: AsyncSession, raw_name: str) -> dict | None:
@@ -227,3 +329,101 @@ async def _fetch_place_map(session: AsyncSession, place_ids: list[int]) -> dict[
         {"ids": place_ids},
     )
     return {row["place_id"]: dict(row) for row in result.mappings().all()}
+
+
+async def _get_fallback_courses(
+    session: AsyncSession,
+    station_id: int | None,
+    theme_tags: list[str],
+    limit: int = 3,
+) -> list[dict]:
+    """Return top-rated courses for the same station / similar theme as a fallback."""
+    params: dict[str, Any] = {"limit": limit}
+    conditions = []
+
+    if station_id is not None:
+        conditions.append("c.station_id = :station_id")
+        params["station_id"] = station_id
+
+    if theme_tags:
+        conditions.append("c.theme_tags && CAST(:themes AS theme_tag[])")
+        params["themes"] = "{" + ",".join(theme_tags) + "}"
+
+    where_sql = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    sql = text(f"""
+        SELECT
+            c.course_id,
+            s.name AS station_name,
+            c.theme_tags,
+            c.bayesian_score,
+            c.rating_count,
+            (
+                SELECT COALESCE(json_agg(p.name ORDER BY cp.visit_order), '[]'::json)
+                FROM course_places cp
+                JOIN places p ON p.place_id = cp.place_id
+                WHERE cp.course_id = c.course_id
+            ) AS preview_places
+        FROM courses c
+        LEFT JOIN stations s ON s.station_id = c.station_id
+        {where_sql}
+        ORDER BY c.bayesian_score DESC, c.rating_count DESC, c.course_id DESC
+        LIMIT :limit
+    """)
+
+    try:
+        rows = (await session.execute(sql, params)).mappings().all()
+        result = []
+        for row in rows:
+            import json as _json
+            preview = row["preview_places"]
+            if isinstance(preview, str):
+                preview = _json.loads(preview)
+            result.append({
+                "course_id": row["course_id"],
+                "station_name": row["station_name"],
+                "theme_tags": list(row["theme_tags"] or []),
+                "bayesian_score": float(row["bayesian_score"] or 0),
+                "preview_places": preview or [],
+            })
+        return result
+    except Exception:
+        logger.exception("Failed to fetch fallback courses")
+        return []
+
+
+def _build_classification_from_parsed_input(data: dict) -> QueryClassification:
+    theme_tags = []
+    for t in data.get("theme_tags") or []:
+        try:
+            theme_tags.append(ThemeTag(t))
+        except ValueError:
+            pass
+
+    budget_raw = data.get("budget_tier")
+    budget_tier = None
+    if budget_raw:
+        try:
+            budget_tier = BudgetTier(budget_raw)
+        except ValueError:
+            pass
+
+    companion_raw = data.get("companion_type")
+    companion_type = None
+    if companion_raw:
+        try:
+            companion_type = CompanionType(companion_raw)
+        except ValueError:
+            pass
+
+    raw_count = data.get("head_count")
+    head_count = max(1, min(10, int(raw_count))) if raw_count else 2
+    station_name = data.get("station_name") or None
+
+    return QueryClassification(
+        theme_tags=theme_tags,
+        station_name=station_name,
+        budget_tier=budget_tier,
+        companion_type=companion_type,
+        head_count=head_count,
+    )
