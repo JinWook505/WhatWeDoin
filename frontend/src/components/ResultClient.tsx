@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
-import { recommend, CourseData } from "@/lib/api"
+import { recommend, isClarificationResult, CourseData } from "@/lib/api"
 import CourseTimeline from "./CourseTimeline"
 import ReviewSection from "./ReviewSection"
 import SimilarCourses from "./SimilarCourses"
@@ -41,6 +41,10 @@ export default function ResultClient({ initialData, query, dailyRemaining: initi
     setError(null)
     try {
       const res = await recommend(query, Array.from(excludedIds), crypto.randomUUID())
+      if (isClarificationResult(res)) {
+        setError("정보가 더 필요해요. 처음 화면에서 다시 입력해주세요.")
+        return
+      }
       if (res.data) {
         setData(res.data)
         setExcludedIds(new Set())

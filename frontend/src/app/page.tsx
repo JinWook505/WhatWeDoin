@@ -5,25 +5,20 @@ import { useRouter } from "next/navigation"
 import styles from "./page.module.css"
 import LoginButton from "@/components/LoginButton"
 import LoginGateModal from "@/components/LoginGateModal"
-import StationSearch from "@/components/StationSearch"
-import KakaoMap from "@/components/KakaoMap"
 import QuotaBadge, { getRemainingCount } from "@/components/QuotaBadge"
 import { useDynamicPlaceholder } from "@/hooks/useDynamicPlaceholder"
 import { getAccessToken, isLoggedIn } from "@/lib/auth"
-import { StationResult } from "@/lib/api"
 
 export default function Home() {
   const router = useRouter()
-  const [station, setStation] = useState<StationResult | null>(null)
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [showLoginGate, setShowLoginGate] = useState(false)
-  const [showMap, setShowMap] = useState(false)
 
   const placeholder = useDynamicPlaceholder(query.length > 0)
 
   const isExhausted = isLoggedIn() && getRemainingCount() === 0
-  const canSubmit = !!station && query.trim().length > 0 && !loading && !isExhausted
+  const canSubmit = query.trim().length > 0 && !loading && !isExhausted
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -35,8 +30,7 @@ export default function Home() {
     }
 
     setLoading(true)
-    const fullQuery = `${station!.name}역 ${query.trim()}`
-    router.push(`/result?q=${encodeURIComponent(fullQuery)}`)
+    router.push(`/result?q=${encodeURIComponent(query.trim())}`)
   }
 
   return (
@@ -51,37 +45,13 @@ export default function Home() {
           </div>
           <h1 className={styles.title}>오늘 뭐하고 놀지?</h1>
           <p className={styles.subtitle}>
-            지하철역 하나만 알려주면 AI가 딱 맞는 코스를 짜드려요
+            어떻게 놀고 싶은지 한 문장만 알려주면 AI가 위치까지 파악해서 딱 맞는 코스를 짜드려요
           </p>
         </header>
 
         <QuotaBadge />
 
         <form className={styles.form} onSubmit={handleSubmit} noValidate>
-          <div className={styles.field}>
-            <div className={styles.stationFieldHeader}>
-              <label className={styles.label}>
-                어느 역에서 놀 거야?
-              </label>
-              <button
-                type="button"
-                className={styles.mapToggle}
-                onClick={() => setShowMap((v) => !v)}
-              >
-                {showMap ? "🔍 검색으로" : "🗺️ 지도로"}
-              </button>
-            </div>
-            {showMap ? (
-              <KakaoMap
-                selectedStation={station}
-                onStationSelect={(s) => { setStation(s); setShowMap(false) }}
-                height="260px"
-              />
-            ) : (
-              <StationSearch selected={station} onSelect={setStation} />
-            )}
-          </div>
-
           <div className={styles.field}>
             <label className={styles.label} htmlFor="query">
               어떻게 놀고 싶어?

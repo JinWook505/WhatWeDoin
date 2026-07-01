@@ -264,20 +264,30 @@ async def recommend(
         else "COUPLE"
     )
 
-    # 4. Resolve station
+    # 4. Resolve station (D-20: location_mention → nearest supported station;
+    #    unresolved falls back to NEEDS_CLARIFICATION instead of a hard error)
     station_id = req.station_id
     station_name_resolved: str | None = classification.station_name
     if station_id is None:
-        if not classification.station_name:
-            raise HTTPException(
-                status_code=400,
-                detail={"code": "NO_STATION", "message": "어느 역 근처인지 알 수 없어요. 동네나 역 이름을 함께 알려주세요!"},
-            )
-        station_row = await _resolve_station(session, classification.station_name)
+        station_row = (
+            await _resolve_station(session, classification.station_name)
+            if classification.station_name
+            else None
+        )
         if not station_row:
-            raise HTTPException(
-                status_code=404,
-                detail={"code": "STATION_NOT_FOUND", "message": f"'{classification.station_name}' 근처 역을 찾을 수 없어요."},
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "NEEDS_CLARIFICATION",
+                    "partial_parsed_input": {
+                        "theme_tags": theme_tags,
+                        "budget_tier": budget_tier,
+                        "companion_type": companion_type,
+                        "head_count": classification.head_count,
+                    },
+                    "missing_fields": ["station_id"],
+                },
             )
         station_id = station_row["station_id"]
         station_name_resolved = station_row["name"]

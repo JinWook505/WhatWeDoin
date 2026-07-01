@@ -130,6 +130,8 @@ async def classify_query(
         station_name = station_name.strip()
 
     missing_fields: list[str] = []
+    if not station_name:
+        missing_fields.append("station_id")
     if companion_type is None:
         missing_fields.append("companion_type")
     if budget_tier is None:

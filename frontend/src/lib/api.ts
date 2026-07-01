@@ -47,6 +47,26 @@ export interface RecommendResponse {
   daily_remaining?: number | null
 }
 
+export interface ClarificationResponse {
+  status: "NEEDS_CLARIFICATION"
+  partial_parsed_input: {
+    theme_tags?: string[]
+    budget_tier?: string | null
+    companion_type?: string | null
+    head_count?: number
+    station_name?: string
+  }
+  missing_fields: string[]
+}
+
+export type RecommendResult = RecommendResponse | ClarificationResponse
+
+export function isClarificationResult(
+  res: RecommendResult,
+): res is ClarificationResponse {
+  return (res as ClarificationResponse).status === "NEEDS_CLARIFICATION"
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -71,7 +91,8 @@ export async function recommend(
   query: string,
   excludePlaceIds: number[] = [],
   idempotencyKey?: string,
-): Promise<RecommendResponse> {
+  resolved?: { stationId?: number; parsedInput?: Record<string, unknown> },
+): Promise<RecommendResult> {
   const token = typeof window !== "undefined" ? getAccessToken() : null
   const ikey = idempotencyKey ?? crypto.randomUUID()
   const res = await fetch(`${API_URL}/v1/courses/recommend`, {
@@ -84,6 +105,8 @@ export async function recommend(
     body: JSON.stringify({
       query,
       exclude_place_ids: excludePlaceIds,
+      ...(resolved?.stationId != null ? { station_id: resolved.stationId } : {}),
+      ...(resolved?.parsedInput ? { parsed_input: resolved.parsedInput } : {}),
     }),
     cache: "no-store",
   } as RequestInit)
