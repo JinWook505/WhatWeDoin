@@ -1,7 +1,8 @@
 from google import genai
 from google.genai import types
+from google.genai import errors as genai_errors
 
-from .base import LLMMessage, LLMProvider, LLMResponse
+from .base import LLMMessage, LLMProvider, LLMResponse, LLMUnavailableError
 
 
 class GeminiProvider(LLMProvider):
@@ -27,11 +28,14 @@ class GeminiProvider(LLMProvider):
 
         config = types.GenerateContentConfig(system_instruction=system_instruction)
 
-        response = await self._client.aio.models.generate_content(
-            model=self._model,
-            contents=contents,
-            config=config,
-        )
+        try:
+            response = await self._client.aio.models.generate_content(
+                model=self._model,
+                contents=contents,
+                config=config,
+            )
+        except genai_errors.APIError as exc:
+            raise LLMUnavailableError(str(exc)) from exc
 
         usage = {}
         if response.usage_metadata:

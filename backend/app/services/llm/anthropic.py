@@ -1,6 +1,6 @@
 import anthropic as anthropic_sdk
 
-from .base import LLMMessage, LLMProvider, LLMResponse
+from .base import LLMMessage, LLMProvider, LLMResponse, LLMUnavailableError
 
 
 class AnthropicProvider(LLMProvider):
@@ -22,12 +22,20 @@ class AnthropicProvider(LLMProvider):
         ]
 
         max_tokens = kwargs.get("max_tokens", 1024)
-        response = await self._client.messages.create(
-            model=self._model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=converted,
-        )
+        try:
+            response = await self._client.messages.create(
+                model=self._model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=converted,
+            )
+        except (
+            anthropic_sdk.RateLimitError,
+            anthropic_sdk.APIStatusError,
+            anthropic_sdk.APIConnectionError,
+            anthropic_sdk.APITimeoutError,
+        ) as exc:
+            raise LLMUnavailableError(str(exc)) from exc
 
         return LLMResponse(
             content=response.content[0].text,
