@@ -114,7 +114,7 @@ CREATE INDEX idx_courses_filter  ON courses (budget_tier, companion_type, head_c
 -- ============================================================
 CREATE TABLE recommendation_requests (
     id                BIGSERIAL PRIMARY KEY,
-    user_id           BIGINT NOT NULL REFERENCES users(id),
+    user_id           BIGINT REFERENCES users(id),  -- D-21: 생성 시점엔 앱 레벨에서 항상 값 채움(D-8 로그인 필수), 탈퇴 시 비식별화(NULL)를 위해 컬럼 자체는 nullable
     station_id        BIGINT NOT NULL REFERENCES stations(station_id),
     query_text        TEXT NOT NULL,
     parsed_input      JSONB,
