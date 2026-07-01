@@ -160,6 +160,24 @@
   color: #a855f7;
 }
 
+.yearInput {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--foreground);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.yearInput:focus {
+  border-color: var(--neon-purple);
+}
+
 .radioGroup {
   display: flex;
   flex-direction: column;

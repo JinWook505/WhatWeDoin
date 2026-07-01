@@ -80,6 +80,7 @@ CREATE TABLE users (
     last_login_at            TIMESTAMPTZ,
     created_at               TIMESTAMPTZ DEFAULT now(),
     updated_at               TIMESTAMPTZ DEFAULT now(),
+    withdrawn_at             TIMESTAMPTZ,
     UNIQUE (oauth_provider, oauth_id)
 );
 
