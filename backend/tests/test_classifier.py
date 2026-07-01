@@ -116,6 +116,27 @@ class TestClassifyQuery:
         assert result.companion_type == CompanionType.COUPLE
 
     @patch("app.services.classifier.get_llm_provider")
+    async def test_default_theme_tags_used_when_none_extracted(self, mock_get):
+        mock_get.return_value = _mock_provider(
+            '{"station_name": "여의도", "theme_tags": [], "budget_tier": "UNDER_30000", "companion_type": "SOLO", "head_count": 1}'
+        )
+        from app.services.classifier import classify_query
+        result = await classify_query(
+            "여의도에서 놀고 싶어",
+            default_theme_tags=[ThemeTag.PARK, ThemeTag.CAFE],
+        )
+        assert result.theme_tags == [ThemeTag.PARK, ThemeTag.CAFE]
+
+    @patch("app.services.classifier.get_llm_provider")
+    async def test_invalid_query_when_no_theme_and_no_default(self, mock_get):
+        mock_get.return_value = _mock_provider(
+            '{"station_name": "여의도", "theme_tags": [], "budget_tier": "UNDER_30000", "companion_type": "SOLO", "head_count": 1}'
+        )
+        from app.services.classifier import classify_query, InvalidQueryError
+        with pytest.raises(InvalidQueryError):
+            await classify_query("여의도에서 놀고 싶어")
+
+    @patch("app.services.classifier.get_llm_provider")
     async def test_needs_clarification_station_missing(self, mock_get):
         mock_get.return_value = _mock_provider(
             '{"theme_tags": ["FOOD"], "budget_tier": "UNDER_30000", "companion_type": "SOLO", "head_count": 1}'

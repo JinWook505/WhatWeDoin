@@ -87,6 +87,23 @@ export async function searchStations(q: string): Promise<StationResult[]> {
   return res.json()
 }
 
+export interface PlaceholderResult {
+  placeholder: string
+  source: "RECENT" | "WEATHER" | "TIME" | "DEFAULT"
+  weather: { temp: number; description: string; main: string } | null
+}
+
+export async function getPlaceholder(): Promise<PlaceholderResult> {
+  const token = typeof window !== "undefined" ? getAccessToken() : null
+  const res = await fetch(`${API_URL}/v1/recommend/placeholder`, {
+    cache: "no-store",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) throw new ApiError("placeholder 조회 실패", res.status)
+  const body = await res.json()
+  return body.data as PlaceholderResult
+}
+
 export async function recommend(
   query: string,
   excludePlaceIds: number[] = [],

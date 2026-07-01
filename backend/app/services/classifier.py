@@ -1,10 +1,15 @@
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 
 from app.models.enums import BudgetTier, CompanionType, ThemeTag
 from app.services.llm import get_llm_provider
 from app.services.llm.base import LLMMessage
+
+logger = logging.getLogger(__name__)
+
+_INVALID_QUERY_MESSAGE = "어떤 하루를 보내고 싶은지 알려주세요"
 
 _SYSTEM_PROMPT = """당신은 데이트 코스 추천 서비스의 질의어 분류기입니다.
 사용자의 자연어 요청을 분석하여 반드시 다음 JSON 형식으로만 응답하세요.
@@ -79,6 +84,7 @@ async def classify_query(
     default_budget_tier: BudgetTier | None = None,
     default_companion_type: CompanionType | None = None,
     default_head_count: int = 2,
+    default_theme_tags: list[ThemeTag] | None = None,
 ) -> QueryClassification:
     provider = get_llm_provider()
     response = await provider.chat([
@@ -89,15 +95,17 @@ async def classify_query(
     raw = response.content.strip()
     json_match = re.search(r'\{.*\}', raw, re.DOTALL)
     if not json_match:
-        raise InvalidQueryError(f"LLM returned non-JSON: {raw[:200]}")
+        logger.warning("Classifier LLM returned non-JSON: %s", raw[:200])
+        raise InvalidQueryError(_INVALID_QUERY_MESSAGE)
 
     try:
         data = json.loads(json_match.group())
     except json.JSONDecodeError as e:
-        raise InvalidQueryError(f"JSON parse error: {e}")
+        logger.warning("Classifier JSON parse error: %s", e)
+        raise InvalidQueryError(_INVALID_QUERY_MESSAGE)
 
     if data.get("error") == "INVALID_QUERY":
-        raise InvalidQueryError("Query could not be classified")
+        raise InvalidQueryError(_INVALID_QUERY_MESSAGE)
 
     theme_tags_raw = data.get("theme_tags") or []
     theme_tags = []
@@ -108,7 +116,10 @@ async def classify_query(
             pass
 
     if not theme_tags:
-        raise InvalidQueryError("No valid theme_tags extracted")
+        theme_tags = list(default_theme_tags or [])
+
+    if not theme_tags:
+        raise InvalidQueryError(_INVALID_QUERY_MESSAGE)
 
     budget_raw = data.get("budget_tier")
     try:
