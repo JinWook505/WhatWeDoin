@@ -205,11 +205,11 @@ WhatWeDoin/
 | 🔲 | 카카오맵 JS SDK 역 마커 선택 UI | SCRUM-29 |
 | 🔲 | 신선도 배치 (월 1회 재동기화) | P1 |
 
-### Phase 7 — 인프라 & 배포 🔲 진행 중
+### Phase 7 — 인프라 & 배포 ⚡ 진행 중
 
 | # | 내용 | 비고 |
 |---|---|---|
-| 🔲 | Terraform — AWS ECS + RDS + ALB (서울 리전) | SCRUM-67 |
+| ✅ | Terraform — AWS VPC + ECS(Fargate) + RDS + ECR + ALB + CloudFront (서울 리전) | SCRUM-67 |
 | ✅ | GitHub Actions CI/CD — ECR → ECS + S3+CloudFront | SCRUM-68 |
 | 🔲 | AWS Secrets Manager 시크릿 관리 | P0 |
 | 🔲 | Sentry 예외 추적 | P1 |
