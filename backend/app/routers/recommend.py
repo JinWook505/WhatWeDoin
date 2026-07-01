@@ -154,6 +154,8 @@ class PlaceDetail(BaseModel):
     name: str
     category: str | None = None
     address: str | None = None
+    lat: float | None = None
+    lng: float | None = None
     business_hours: Any | None = None
     price_range: str | None = None
     user_rating_avg: float | None = None
@@ -179,6 +181,7 @@ class CourseResponse(BaseModel):
     stages: list[StageDetail]
     similar_top_courses: list[dict] = []
     served_from: str = "LLM"
+    total_walking_distance_km: float | None = None
 
 
 @router.post("/recommend")
@@ -356,7 +359,7 @@ async def recommend(
         )
 
     # 8. Persist
-    course_id = await upsert_course(
+    course_id, total_walking_distance_km = await upsert_course(
         session=session,
         station_id=station_id,
         course=course,
@@ -384,6 +387,8 @@ async def recommend(
                     name=p.get("name", ""),
                     category=place_category_label(p.get("category")),
                     address=p.get("address"),
+                    lat=float(p["lat"]) if p.get("lat") is not None else None,
+                    lng=float(p["lng"]) if p.get("lng") is not None else None,
                     business_hours=p.get("business_hours"),
                     price_range=p.get("price_range"),
                     user_rating_avg=avg_rating,
@@ -409,6 +414,7 @@ async def recommend(
         stages=stages_out,
         similar_top_courses=[],
         served_from="LLM",
+        total_walking_distance_km=total_walking_distance_km,
     ).model_dump()
 
     # 10. Store cache + record request
@@ -438,6 +444,7 @@ async def _build_response_from_course_id(
         await session.execute(
             text("""
                 SELECT c.course_id, c.theme_tags, c.station_id,
+                       c.total_walking_distance_km,
                        s.name AS station_name
                 FROM courses c
                 LEFT JOIN stations s ON s.station_id = c.station_id
@@ -455,6 +462,7 @@ async def _build_response_from_course_id(
                 SELECT cp.stage_order, cp.option_index, cp.stage_label,
                        cp.walking_distance_from_station_km,
                        p.place_id, p.name, p.category, p.address,
+                       p.lat, p.lng,
                        p.business_hours, p.price_range, p.user_rating_sum,
                        p.user_rating_count, p.map_url, p.thumbnail_url,
                        cp.description
@@ -480,6 +488,8 @@ async def _build_response_from_course_id(
             "name": p["name"],
             "category": place_category_label(p["category"]),
             "address": p["address"],
+            "lat": float(p["lat"]) if p["lat"] is not None else None,
+            "lng": float(p["lng"]) if p["lng"] is not None else None,
             "business_hours": p["business_hours"],
             "price_range": p["price_range"],
             "user_rating_avg": round(rs / 2.0 / rc, 1) if rc > 0 else None,
@@ -491,6 +501,7 @@ async def _build_response_from_course_id(
         })
     stages_out = [stages_by_order[k] for k in sorted(stages_by_order)]
 
+    dist = course_row["total_walking_distance_km"]
     return {
         "course_id": course_id,
         "title": "",
@@ -500,6 +511,7 @@ async def _build_response_from_course_id(
         "stages": stages_out,
         "similar_top_courses": [],
         "served_from": served_from,
+        "total_walking_distance_km": float(dist) if dist is not None else None,
     }
 
 
