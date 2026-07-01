@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     JWT_ACCESS_TTL_MINUTES: int = 30
     JWT_REFRESH_TTL_DAYS: int = 14
 
+    # OpenWeatherMap
+    OPENWEATHER_API_KEY: str = ""
+
     # LLM Provider — "gemini" | "anthropic"
     LLM_PROVIDER: str = "gemini"
     GEMINI_API_KEY: str = ""
