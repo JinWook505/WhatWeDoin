@@ -196,7 +196,7 @@
 - [ ] Given 클라이언트 요청, When 추천을 요청하면, Then `station_id`는 **선택값**이다 — 미포함 시 질의어에서 해석된 `location_mention`으로 서버가 최근접 지원 역을 resolve하며(D-20), 해석도 실패하면 `NEEDS_CLARIFICATION`(`missing_fields`에 `station_id` 포함, US-A4)으로 전환된다(단, resolve된 최종 역은 항상 정확히 1개, D-1 유지).
 - [ ] Given 질의어, When 추천하면, Then LLM 분류 단계가 질의어를 `location_mention`·`theme_tags[]`·`budget_tier`·`companion_type`·`head_count`로 파싱하고 결과가 응답의 `parsed_input`에 포함된다(9장 2단계). 분류 불가 시 `INVALID_QUERY`.
 - [ ] Given 선택한 역의 반경 5km 내 후보, When 추천하면, Then 후보가 부족하면 7km로 1회 확장하고, 그래도 없으면 `NO_COURSE_FOUND`를 반환한다.
-- [ ] Given LLM 코스 생성, When 응답을 만들면, Then 모든 장소는 방문순서(`order`)·도보거리·`description`을 포함하고 `total_walking_distance_km`가 구간 합과 일치한다.
+- [ ] Given LLM 코스 생성, When 응답을 만들면, Then 코스는 2~4개의 단계(`stage_order`·`stage_label`)로 구성되고 각 단계는 1~3개의 대안(`options[]`)을 가지며, 각 옵션은 역 기준 도보거리(`walking_distance_from_station_km`)와 `description`을 포함한다(D-26).
 - [ ] Given LLM이 후보 풀 밖 장소를 반환(환각), When 검증하면, Then 위반 항목 제거 후 1회 재요청하고, 실패 시 `NO_COURSE_FOUND`를 반환한다.
 - [ ] Given 동일 `Idempotency-Key` 재요청(더블클릭/재시도), When 호출하면, Then 새 LLM 호출 없이 이전 결과를 200으로 반환한다(일일 한도 미차감).
 - [ ] Given 동일 분류 결과(역 + `parsed_input`) 캐시 존재, When 호출하면, Then `served_from=CACHE`로 즉시 반환한다.
@@ -546,7 +546,7 @@ CREATE INDEX idx_courses_filter     ON courses (budget_tier, companion_type, hea
 ```
 > - 코스에는 **생성자 식별정보를 저장하지 않는다(비식별)**. 생성 즉시 공개(D-10)이므로 `is_saved` 게이트 없음.
 > - **라이프사이클**: 추천 생성 시점(9장 6단계)에 `content_hash` 기준 **UPSERT**(`INSERT ... ON CONFLICT (content_hash) DO UPDATE SET updated_at=now() RETURNING course_id`). 동일 구성이면 기존 `course_id` 재사용(리뷰·점수 보존).
-> - **`content_hash`**: `sha256(station_id + 정렬된 theme_tags + budget_tier + companion_type + head_count + 방문순서대로 나열한 place_id 목록)`. 동선 순서가 다르면 다른 코스.
+> - **`content_hash`**: `sha256(단계별 {stage_label, 정렬된 option place_id 목록} 리스트, D-26)`. 단계 구성이나 각 단계의 옵션 조합이 다르면 다른 코스.
 > - **베이지안 평균(D-11)**: `bayesian_score = (C·m + rating_sum) / (C + rating_count)` (m=`rating.prior_mean`, C=`rating.prior_count`). 리뷰 등록/수정/삭제 트랜잭션에서 `rating_count`/`rating_sum` 갱신 후 재계산.
 > - **유사 테마 고득점 3개(D-13, 9장 7단계)**: `WHERE station_id = ? AND theme_tags && ?(겹침) AND course_id <> 새코스 ORDER BY bayesian_score DESC LIMIT 3`. GIN 인덱스로 배열 겹침 검색.
 > - **`places` JSONB vs `course_places`(6.2.10)**: `courses.places`는 생성 시점 가격·영업시간·동선을 박제한 **불변 스냅샷**(조인 없이 즉시 서빙). 정규화 테이블은 생성 시 함께 채워 분석·필터·place 단위 집계에 사용.
