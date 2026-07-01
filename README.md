@@ -130,7 +130,7 @@ WhatWeDoin/
 
 ## 구현 순서 및 진척도
 
-> **전체 진척도: 약 90%** (Phase 1~6 완료, Phase 7 인프라 진행 중)
+> **전체 진척도: 약 97%** (Phase 1~6 완료, Phase 7 인프라 진행 중)
 
 ### Phase 1 — 기반 구축 ✅ 완료
 
@@ -202,7 +202,7 @@ WhatWeDoin/
 | ✅ | 프론트: 역 이름 자동완성 (`StationSearch`, 키보드 ↑↓/Enter/Esc) | SCRUM-31 |
 | ✅ | 프론트: 유사 테마 고득점 코스 3개 동반 노출 | SCRUM-40 |
 | ✅ | 프론트: 일일 잔여 횟수 배지 (`QuotaBadge`, KST 기준) | SCRUM-44 |
-| 🔲 | 카카오맵 JS SDK 역 마커 선택 UI | SCRUM-29 |
+| ✅ | 카카오맵 JS SDK 역 마커 선택 UI (지도/검색 토글) | SCRUM-29 |
 | 🔲 | 신선도 배치 (월 1회 재동기화) | P1 |
 
 ### Phase 7 — 인프라 & 배포 ⚡ 진행 중
