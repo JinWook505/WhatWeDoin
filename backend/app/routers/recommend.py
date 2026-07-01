@@ -28,6 +28,7 @@ from app.services.course_generator import (
     generate_course,
     upsert_course,
 )
+from app.services.llm.base import LLMUnavailableError
 from app.services.place_search import search_candidate_places
 
 logger = logging.getLogger(__name__)
@@ -309,11 +310,27 @@ async def recommend(
             status_code=404,
             detail={"code": "NO_CANDIDATES", "message": str(e)},
         )
-
-    if course is None:
+    except LLMUnavailableError as exc:
+        logger.error("LLM unavailable after retries: %s", exc)
+        fallback_courses = await _fetch_fallback_courses(session, station_id, theme_tags)
         raise HTTPException(
             status_code=503,
-            detail={"code": "GENERATION_FAILED", "message": "LLM failed to generate a valid course"},
+            detail={
+                "code": "LLM_UNAVAILABLE",
+                "message": "AI 서비스가 잠시 바빠요. 잠시 후 다시 시도해주세요.",
+                "fallback_courses": fallback_courses,
+            },
+        )
+
+    if course is None:
+        fallback_courses = await _fetch_fallback_courses(session, station_id, theme_tags)
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "LLM_UNAVAILABLE",
+                "message": "AI 서비스가 잠시 바빠요. 잠시 후 다시 시도해주세요.",
+                "fallback_courses": fallback_courses,
+            },
         )
 
     # 8. Persist
@@ -480,6 +497,56 @@ async def _fetch_place_map(session: AsyncSession, place_ids: list[int]) -> dict[
         {"ids": place_ids},
     )
     return {row["place_id"]: dict(row) for row in result.mappings().all()}
+
+
+async def _fetch_fallback_courses(
+    session: AsyncSession,
+    station_id: int,
+    theme_tags: list[str],
+    limit: int = 3,
+) -> list[dict]:
+    """Fetch popular courses from same station with similar themes for LLM fallback."""
+    try:
+        rows = (
+            await session.execute(
+                text("""
+                    SELECT c.course_id, c.theme_tags, c.bayesian_score, c.rating_count,
+                           s.name AS station_name,
+                           (
+                               SELECT COALESCE(json_agg(p.name ORDER BY cp.visit_order), '[]'::json)
+                               FROM course_places cp
+                               JOIN places p ON p.place_id = cp.place_id
+                               WHERE cp.course_id = c.course_id
+                           ) AS preview_places
+                    FROM courses c
+                    LEFT JOIN stations s ON s.station_id = c.station_id
+                    WHERE c.station_id = :sid
+                      AND c.theme_tags && CAST(:themes AS theme_tag[])
+                    ORDER BY c.bayesian_score DESC, c.rating_count DESC
+                    LIMIT :limit
+                """),
+                {
+                    "sid": station_id,
+                    "themes": "{" + ",".join(theme_tags) + "}" if theme_tags else "{}",
+                    "limit": limit,
+                },
+            )
+        ).mappings().all()
+
+        return [
+            {
+                "course_id": r["course_id"],
+                "station_name": r["station_name"],
+                "theme_tags": list(r["theme_tags"] or []),
+                "bayesian_score": float(r["bayesian_score"] or 0),
+                "rating_count": r["rating_count"] or 0,
+                "preview_places": r["preview_places"] if isinstance(r["preview_places"], list) else [],
+            }
+            for r in rows
+        ]
+    except Exception as exc:
+        logger.warning("Failed to fetch fallback courses: %s", exc)
+        return []
 
 
 # ---------------------------------------------------------------------------
