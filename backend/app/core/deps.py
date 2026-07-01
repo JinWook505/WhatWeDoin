@@ -29,7 +29,11 @@ async def get_current_user_optional(
         return None
     row = (
         await db.execute(
-            text("SELECT id, nickname, status FROM users WHERE id=:uid"),
+            text(
+                "SELECT id, nickname, status, preferred_theme_tags, "
+                "preferred_budget, preferred_companion_type, home_station_id "
+                "FROM users WHERE id=:uid"
+            ),
             {"uid": user_id},
         )
     ).mappings().first()

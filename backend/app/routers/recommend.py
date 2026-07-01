@@ -234,8 +234,20 @@ async def recommend(
     if req.parsed_input is not None:
         classification = _build_classification_from_parsed_input(req.parsed_input)
     else:
+        default_budget_tier = _safe_enum(BudgetTier, current_user.get("preferred_budget"))
+        default_companion_type = _safe_enum(CompanionType, current_user.get("preferred_companion_type"))
+        default_theme_tags = [
+            tag for tag in (
+                _safe_enum(ThemeTag, t) for t in (current_user.get("preferred_theme_tags") or [])
+            ) if tag is not None
+        ]
         try:
-            classification = await classify_query(req.query)
+            classification = await classify_query(
+                req.query,
+                default_budget_tier=default_budget_tier,
+                default_companion_type=default_companion_type,
+                default_theme_tags=default_theme_tags,
+            )
         except NeedsClarificationError as e:
             from fastapi.responses import JSONResponse
             return JSONResponse(
@@ -264,20 +276,30 @@ async def recommend(
         else "COUPLE"
     )
 
-    # 4. Resolve station
+    # 4. Resolve station (D-20: location_mention → nearest supported station;
+    #    unresolved falls back to NEEDS_CLARIFICATION instead of a hard error)
     station_id = req.station_id
     station_name_resolved: str | None = classification.station_name
     if station_id is None:
-        if not classification.station_name:
-            raise HTTPException(
-                status_code=400,
-                detail={"code": "NO_STATION", "message": "어느 역 근처인지 알 수 없어요. 동네나 역 이름을 함께 알려주세요!"},
-            )
-        station_row = await _resolve_station(session, classification.station_name)
+        station_row = (
+            await _resolve_station(session, classification.station_name)
+            if classification.station_name
+            else None
+        )
         if not station_row:
-            raise HTTPException(
-                status_code=404,
-                detail={"code": "STATION_NOT_FOUND", "message": f"'{classification.station_name}' 근처 역을 찾을 수 없어요."},
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "NEEDS_CLARIFICATION",
+                    "partial_parsed_input": {
+                        "theme_tags": theme_tags,
+                        "budget_tier": budget_tier,
+                        "companion_type": companion_type,
+                        "head_count": classification.head_count,
+                    },
+                    "missing_fields": ["station_id"],
+                },
             )
         station_id = station_row["station_id"]
         station_name_resolved = station_row["name"]
@@ -488,6 +510,15 @@ async def _build_response_from_course_id(
     }
 
 
+def _safe_enum(enum_cls, raw):
+    if not raw:
+        return None
+    try:
+        return enum_cls(raw)
+    except ValueError:
+        return None
+
+
 async def _resolve_station(session: AsyncSession, raw_name: str) -> dict | None:
     normalized = raw_name.rstrip("역").strip()
     for name, sql in [
@@ -581,10 +612,30 @@ async def get_placeholder(
     session: AsyncSession = Depends(get_session),
     current_user: dict | None = Depends(get_current_user_optional),
 ):
-    """Return dynamic placeholder text and current Seoul weather.
+    """Return a single dynamic placeholder + its source (US-A3, D-17).
 
-    Fallback chain: OpenWeatherMap → time-based → static default.
+    Priority: ① 로그인 사용자 본인의 최근 질문 → ② 날씨 기반 문구 → ③ 시간대 기반 문구 → ④ 기본 예시.
     """
+    if current_user:
+        row = (
+            await session.execute(
+                text("""
+                    SELECT query_text
+                    FROM recommendation_requests
+                    WHERE user_id = :uid AND query_text IS NOT NULL
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """),
+                {"uid": current_user["id"]},
+            )
+        ).mappings().first()
+        if row and row["query_text"]:
+            return {
+                "success": True,
+                "data": {"placeholder": row["query_text"], "source": "RECENT", "weather": None},
+                "error": None,
+            }
+
     weather = await _fetch_weather()
 
     if weather:
@@ -592,31 +643,19 @@ async def get_placeholder(
         main = weather["main"] if weather["main"] in ("Clear", "Clouds", "Rain", "Snow") else "other"
         key = (tier, main)
         candidates = _PLACEHOLDERS.get(key) or _PLACEHOLDERS.get((tier, "other")) or _DEFAULT_PLACEHOLDERS
-    else:
-        candidates = _time_based_placeholders()
+        return {
+            "success": True,
+            "data": {"placeholder": candidates[0], "source": "WEATHER", "weather": weather},
+            "error": None,
+        }
 
-    # Recent queries for logged-in users
-    recent_queries: list[str] = []
-    if current_user:
-        rows = (
-            await session.execute(
-                text("""
-                    SELECT DISTINCT query_text
-                    FROM courses
-                    WHERE query_text IS NOT NULL
-                    ORDER BY query_text
-                    LIMIT 3
-                """),
-            )
-        ).mappings().all()
-        recent_queries = [r["query_text"] for r in rows if r["query_text"]]
-
+    time_candidates = _time_based_placeholders()
     return {
         "success": True,
         "data": {
-            "placeholders": candidates,
-            "weather": weather,
-            "recent_queries": recent_queries,
+            "placeholder": time_candidates[0] if time_candidates else _DEFAULT_PLACEHOLDERS[0],
+            "source": "TIME" if time_candidates else "DEFAULT",
+            "weather": None,
         },
         "error": None,
     }

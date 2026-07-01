@@ -1,5 +1,6 @@
-import { recommend, ApiError } from "@/lib/api"
+import { recommend, isClarificationResult, ApiError } from "@/lib/api"
 import ResultClient from "@/components/ResultClient"
+import ClarificationStep from "@/components/ClarificationStep"
 import ErrorFallback from "@/components/ErrorFallback"
 import styles from "./page.module.css"
 
@@ -22,6 +23,7 @@ export default async function ResultPage({ searchParams }: Props) {
   }
 
   let data = null
+  let clarification: { missing_fields: string[]; partial_parsed_input: Record<string, unknown> } | null = null
   let errorMessage: string | null = null
   let errorCode: string | undefined
   let errorStatus = 0
@@ -29,8 +31,12 @@ export default async function ResultPage({ searchParams }: Props) {
 
   try {
     const res = await recommend(q)
-    data = res.data
-    dailyRemaining = res.daily_remaining ?? null
+    if (isClarificationResult(res)) {
+      clarification = res
+    } else {
+      data = res.data
+      dailyRemaining = res.daily_remaining ?? null
+    }
   } catch (err: unknown) {
     if (err instanceof ApiError) {
       errorMessage = err.message
@@ -40,6 +46,18 @@ export default async function ResultPage({ searchParams }: Props) {
       errorMessage = err.message
       errorStatus = 500
     }
+  }
+
+  if (clarification) {
+    return (
+      <div className={styles.page}>
+        <ClarificationStep
+          query={q}
+          missingFields={clarification.missing_fields}
+          partialParsedInput={clarification.partial_parsed_input}
+        />
+      </div>
+    )
   }
 
   if (errorStatus > 0 || !data) {

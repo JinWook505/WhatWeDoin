@@ -2,15 +2,16 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | **v2.5** — PRD |
-| 작성일 | 2026-06-30 |
+| 문서 버전 | **v2.6** — PRD |
+| 작성일 | 2026-07-01 |
 | 관련 문서 | 없음  |
 | 범위 | 제품 개요 / 사용자 플로우 / 기능요구(User Story·인수조건) / 비기능요구 / 기술스택 / DB / API / 인증 / 추천엔진 / 보안 / 설정값 |
-| 상태 | MVP 확정. 단일 역 + 질의어(자연어) 기반 추천으로 개편 |
+| 상태 | MVP 확정. 단일 질의어(자연어) 입력 기반 추천으로 개편(역 수동 선택 UI 제거) |
 
 ### 변경 이력
 | 버전 | 일자 | 변경 |
 |---|---|---|
+| v2.6 | 2026-07-01 | **초기 입력을 "역 선택 + 질의어" → "질의어 단일 입력"으로 전면 개편(D-20).** ① 최초 화면의 지도/역 이름 검색 UI 제거 — 사용자는 "어떻게 놀고 싶은지" 한 문장만 입력. ② 질의어 안의 지명·동네 언급을 LLM이 추출해 최근접 지원 역으로 자동 매핑(`station_name` → `station_id` resolution), GPS는 계속 미사용(D-20은 D-1 위치 정책 유지, 수집 방식만 변경). ③ 지명이 전혀 언급되지 않거나 분류가 불충분하면 **US-A4(추가 입력 요청 Step)** 로 보완 — 기존 SCRUM-60 "PRD 비정합" 플래그를 본 버전에서 공식 해소하고 `missing_fields`에 `station_id`를 포함하도록 확장. ④ US-A1(지도 선택)·US-A2(역 이름 검색)는 메인 화면 1차 진입점에서 **US-A4 폴백 전용**으로 격하(P0→P1). ⑤ `POST /v1/courses/recommend` 요청에서 `station_id`는 선택값으로 전환(질의어에서 해석 실패 시에만 클라이언트가 값 채움). ⑥ `GET /v1/recommend/placeholder`는 `station_id` 없이도 동작(서울 기본 좌표 날씨로 폴백). |
 | v2.5 | 2026-06-30 | **SCRUM-70 법무 게이트 범위 확정 + 사용자 제보 MVP 정책 수정.** ① SCRUM-70 범위 확정: 카카오 로컬 REST API 기본 메타(이름·주소·카테고리·좌표·전화번호) 사용은 이용약관 허용 범위 → 법무 게이트 대상은 **크롤링(상세 페이지 스크래핑)에 한함**. ② `business_hours`(영업시간)·`place_rating`(별점)은 카카오 API 미제공 → MVP에서 **사용자 직접 입력으로 수집**(playwright 검증 없는 단순 제보). ③ `places` 테이블에 `user_rating_sum`·`user_rating_count` 컬럼 추가. ④ `POST /v1/places/{place_id}/report` 엔드포인트 추가(영업시간·별점·가격 사용자 제보). ⑤ Out 섹션에서 "영업시간 제보 로직" 표현 수정: 단순 사용자 입력은 MVP 포함, playwright 검증 파이프라인만 V2 유지. |
 | v2.4 | 2026-06-29 | **카카오 API 한계 반영 및 LLM 전략 수정.** ① `places` 테이블에 `theme_tags` 컬럼 추가(카카오 API 미제공 → ETL 시 카테고리 코드→enum 매핑으로 채움). ② 카카오 API 평점·영업시간 미제공 정책 명시(영업시간 크롤링 불가 → 사용자 제보만 허용). ③ `LLM_MODEL_PRIMARY`: `claude-opus-4-8` → `claude-sonnet-4-6`(비용 최적화). ④ LLM Provider 추상화 인터페이스 설계 추가(OpenAI 등 타 공급자 전환 대비). ⑤ `station_lines` 테이블 시딩 필요 명시. ⑥ `stations` 시딩 upsert 정책 명시 + 지방 도시(대구·부산 등) 확장 고려. ⑦ **플레이스 단위 리뷰·영업시간 제보 로직(playwright·소형모델·보상체계) → V2 명시** (Out 섹션 추가). |
 | v2.3 | 2026-06-25 | **인프라 간소화.** Redis/ElastiCache·S3+CloudFront 제거. 캐시·레이트리밋·refresh 토큰·날씨 캐시 모두 PostgreSQL로 처리. AWS 인프라: ECS + RDS + ALB 유지. 프론트는 Vercel(또는 정적 호스팅). DB 스키마 관리: Alembic 유지. |
@@ -30,7 +31,7 @@
 ## 1. 제품 개요
 
 ### 1.1 한 줄 정의
-**선택한 지하철역 1개를 기준으로, AI가 "오늘 뭐하고 놀지" 플랜(장소·동선 포함)을 즉시 짜주는 서비스.** 멀리 가지 않아도 가까운 역에서 알차게 놀 수 있게, "오늘 뭐하지?(What We Doin?)"의 고민을 한 번의 탭으로 해결한다. 친구끼리·혼자·연인 등 누구와의 외출이든 대응한다.
+**지하철역을 직접 고를 필요 없이, "오늘 뭐하고 놀지" 한 문장만 입력하면 AI가 문장 속 위치(동네·지명)를 파악해 가장 가까운 지하철역 기준으로 플랜(장소·동선 포함)을 즉시 짜주는 서비스.** 멀리 가지 않아도 가까운 역에서 알차게 놀 수 있게, "오늘 뭐하지?(What We Doin?)"의 고민을 한 번의 입력으로 해결한다. 친구끼리·혼자·연인 등 누구와의 외출이든 대응한다.
 
 ### 1.2 문제 / 타겟
 - **문제**: 놀 곳·동선을 매번 검색·조합하는 비용이 크다. 후기·지도·예산을 따로 오가며 계획하기 번거롭고, "늘 가던 동네"만 맴돌게 된다.
@@ -38,7 +39,7 @@
 - **인사이트**: 지하철은 Z세대의 기본 이동수단. "이번엔 어느 역 가볼까"를 정하면 그 역에서 뭘 할지가 막막하다 → **역을 정하면 플랜이 따라오게** 한다.
 
 ### 1.3 핵심 가치 제안
-1. **즉시성** — 역 1개 + 플랜 유형/예산만 고르면 동선까지 짜인 플랜이 나온다.
+1. **즉시성** — "어떻게 놀고 싶은지" 한 문장만 입력하면 위치·유형·예산까지 AI가 알아서 파악해 동선이 짜인 플랜이 나온다. 역을 따로 고를 필요가 없다.
 2. **역 탐험** — "오늘은 이 역, 다음엔 저 역" 가까운 역들을 갈아타며 새로운 동네를 발견. 역별 인기 플랜이 탐험의 출발점.
 3. **검증된 플랜** — 다른 사용자가 높은 점수(리뷰)를 준 인기 코스를 역·테마·인원·예산으로 탐색 가능.
 4. **무료·무가입 경험** — 비로그인으로 생성·열람·피드백까지 전부 가능. 로그인은 개인화에서만.
@@ -52,9 +53,9 @@
 | 가입 전환율 | 비로그인 → 카카오 로그인 | ≥ 10% |
 
 ### 1.5 MVP 범위 (In / Out)
-**In (P0~P1)**: 지도/검색 기반 **단일 역 선택**, **질의어(자연어) 입력 + 동적 placeholder**, **로그인 사용자** 대상 AI 플랜 추천(하루 3회 무료) + **유사 테마 고득점 코스 3개 동반**, 생성 코스 **전부 즉시 공개·DB 저장**, 플랜 결과 화면, **100점·5단위 점수 + 댓글 + 링크 통합 리뷰**(회원 1회/비로그인 IP) + **베이지안 평균 랭킹**, 메인에서 역·테마·인원·예산 조건 저장 코스 탐색, 카카오 로그인·온보딩·마이페이지·탈퇴, 레이트리밋(비용 방어), 데이터 시딩/신선도 배치.
+**In (P0~P1)**: **단일 자연어 질의어 입력**(위치·테마·예산·동행·인원을 모두 한 문장에서 추출) + 동적 placeholder, 질의어에서 지명이 검출되지 않거나 분류가 불충분하면 **추가 입력 Step(NEEDS_CLARIFICATION)** 으로 보완(역 검색 폴백 포함, US-A4), **로그인 사용자** 대상 AI 플랜 추천(하루 3회 무료) + **유사 테마 고득점 코스 3개 동반**, 생성 코스 **전부 즉시 공개·DB 저장**, 플랜 결과 화면, **100점·5단위 점수 + 댓글 + 링크 통합 리뷰**(회원 1회/비로그인 IP) + **베이지안 평균 랭킹**, 메인에서 역·테마·인원·예산 조건 저장 코스 탐색, 카카오 로그인·온보딩·마이페이지·탈퇴, 레이트리밋(비용 방어), 데이터 시딩/신선도 배치.
 **In (P0~P1) 추가(v2.5)**: 장소 정보 사용자 제보(`POST /v1/places/{id}/report`) — 영업시간·별점·가격 직접 입력(검증 없음). 장소 카드에 "영업시간 알고 계신가요?" / "별점 남기기" CTA 노출.
-**Out (V2+)**: 다중 역 경유 플랜·역간 거리 검증, 출구별 만남 지점, 모바일 앱(React Native), 네이버 데이터 소스, 명시적 시간대(점심/저녁) 선택 UI(질의어로는 반영), 이미지 공유(OG 이미지 자동생성), 리뷰 신고 자동 숨김·캡차 등 추가 어뷰징 방어, 역 탐험 누적 기록(지나간 역 컬렉션), 무료 재추천(regenerate), **플레이스(장소) 단위 리뷰**(코스 리뷰와 별도 `place_reviews` 테이블), **영업시간 제보 검증 파이프라인**(playwright 검증·소형 분류모델·보상체계 — MVP의 단순 사용자 입력과 달리 자동 검증 포함, V2).
+**Out (V2+)**: 초기 화면의 **지도/역 이름 직접 검색을 통한 수동 역 선택**(D-20 — 단, US-A4 추가 입력 Step 안의 폴백 UI로만 유지), 다중 역 경유 플랜·역간 거리 검증, 출구별 만남 지점, 모바일 앱(React Native), 네이버 데이터 소스, 명시적 시간대(점심/저녁) 선택 UI(질의어로는 반영), 이미지 공유(OG 이미지 자동생성), 리뷰 신고 자동 숨김·캡차 등 추가 어뷰징 방어, 역 탐험 누적 기록(지나간 역 컬렉션), 무료 재추천(regenerate), **플레이스(장소) 단위 리뷰**(코스 리뷰와 별도 `place_reviews` 테이블), **영업시간 제보 검증 파이프라인**(playwright 검증·소형 분류모델·보상체계 — MVP의 단순 사용자 입력과 달리 자동 검증 포함, V2).
 
 ### 1.6 핵심 정책 결정 로그
 | # | 결정 | 비고 |
@@ -78,6 +79,7 @@
 | **D-17** | **날씨 placeholder에 무료 기상 API(OpenWeatherMap Current) 사용** | 2026-06-25. 역 좌표로 현재 날씨 조회. 무료 티어(60 call/min) 내 운영. station_id별 캐시로 호출 최소화. |
 | **D-18** | **`rating.prior_mean=50`, `prior_count=5` 확정** | 2026-06-25. 리뷰 없는 코스의 기본 베이지안 점수를 중립값 50으로 설정. |
 | **D-19** | **IP 리뷰 어뷰징 추가 방어(캡차 등) → V2** | 2026-06-25. MVP는 `ratelimit.review_ip_daily` 일일 한도만 적용. 캡차·핑거프린트 등은 V2. |
+| **D-20** | **초기 입력에서 지하철역 수동 선택 UI 제거 → 질의어 자연어에서 LLM이 지명/동네를 추출해 최근접 지원 역에 매핑** | 2026-07-01. `station_name`(LLM 추출) → `station_id`(DB resolve)로 서버에서 처리(D-1 단일 역 정책은 유지). 지명 언급이 없거나 매칭 실패 시 US-A4 추가 입력 Step에서 역 검색 UI(구 US-A2)를 폴백으로 노출. GPS 자동 수집은 계속 미사용(11장). |
 
 ---
 
@@ -88,7 +90,8 @@
 
 | 구분 | 기능 | 비로그인 | 로그인 필요 |
 |---|---|---|---|
-| 메인 | 지하철역 선택·검색 | ✅ | — |
+| 메인 | 질의어(자연어) 단일 입력(위치 자동 추출) | ✅ | — |
+| 메인 | 위치 미검출 시 역 검색 폴백(US-A4) | ✅ | — |
 | 메인 | 저장 코스 목록 조회(역·테마·인원·예산 필터) | ✅ | — |
 | 메인 | 코스 상세·리뷰 열람 | ✅ | — |
 | 메인 | 코스 리뷰(100점·5단위 점수 + 댓글 + 링크) | ✅ (IP 기반) | — |
@@ -106,8 +109,10 @@
 ### 2.2 핵심 사용자 여정 (Happy Path)
 ```
 [조회·무가입]  메인에서 역·테마·인원·예산 필터로 저장 코스 둘러보기 → 코스 상세·리뷰 열람 → 점수·댓글·링크 리뷰 남기기(IP)
-[생성·로그인]  카카오 로그인 → 역 1개 선택 → 질의어 입력(동적 placeholder)
-                → AI가 질의어를 분류(테마·예산·누구랑·인원) → 후보 장소로 새 코스 생성(타임라인+지도)
+[생성·로그인]  카카오 로그인 → 질의어 한 번 입력(동적 placeholder, 예: "홍대에서 친구랑 술 한잔하고 싶어")
+                → AI가 질의어에서 위치(동네·지명)와 테마·예산·누구랑·인원을 함께 분류(D-20)
+                → (위치 미검출/분류 불충분 시) 추가 입력 Step에서 역 검색 등으로 보완(US-A4, NEEDS_CLARIFICATION)
+                → 해석된 최근접 역 반경의 후보 장소로 새 코스 생성(타임라인+지도)
                 → 새 코스 + 유사 테마 고득점 코스 3개 함께 노출 → 코스는 즉시 DB 저장·공개
                 → 점수(100점·5단위)·댓글·링크 리뷰 → 베이지안 평균으로 메인 랭킹에 반영
 ```
@@ -116,50 +121,73 @@
 
 ## 3. 기능 요구사항 — User Story & 인수 조건
 
-### Epic A. 역 선택 & 코스 입력
+### Epic A. 질의어 입력 & 위치 해석
 
-#### US-A1. 지도에서 지하철역 탐색·선택 — **P0**
-> 사용자로서, 지도를 움직여 원하는 지하철역 **1개**를 골라 코스의 기준점으로 삼고 싶다.
-> 관련: `GET /v1/stations`
+> **v2.6(D-20) 개편**: 최초 화면에서 지하철역을 직접 고르는 절차를 없앴다. 사용자는 US-A3의 **질의어 입력 하나만** 마주치고, 그 문장 속 지명·동네를 AI가 해석해 역을 자동으로 정한다(US-A3a). 옛 US-A1(지도)·US-A2(역 검색)는 독립된 1차 진입점이 아니라, 위치 해석이 실패했을 때 US-A4가 띄우는 **보완 입력 Step 안의 폴백 컴포넌트**로만 남는다.
 
-- [ ] Given 지도 화면, When 뷰포트를 이동/줌하면, Then 해당 `bounds` 내 지하철역 마커만 표시된다(일반 POI 미표시).
-- [ ] Given 역 마커, When 탭하면, Then 역명·노선 칩이 표시되고 "기준 역으로 선택" 상태가 된다.
-- [ ] Given 미지원 역(`is_supported=false`), When 선택하면, Then 선택이 막히고 `STATION_NOT_SUPPORTED`("아직 지원하지 않는 역이에요") 안내가 노출된다.
-- [ ] Given 역 1개 선택, When 다음 단계로 이동하면, Then 선택된 단일 역이 유지된 채 입력 화면으로 전환된다.
-- [ ] Given 이미 역 1개를 선택한 상태, When 다른 역을 선택하면, Then 기존 선택이 새 역으로 **교체**된다(단일 선택, 다중 선택 미지원).
-- [ ] 🆕 Given GPS 미사용 정책(11장), When 지도를 처음 열면, Then 위치 자동수집 없이 기본 위치(서울 중심/마지막 본 영역)로 시작한다.
+#### US-A3. 질의어(자연어) 단일 입력 & 동적 placeholder — **P0**
+> 역도, 유형·예산도 따로 고르지 않고, "홍대에서 친구랑 술 한잔하고 싶어"처럼 **한 문장**만 입력하면 AI가 위치까지 포함해 오늘의 상황을 알아서 파악해주길 원한다. 입력창엔 상황에 맞는 예시가 떠 있으면 좋겠다.
+> 관련: `POST /v1/courses/recommend`(query), `GET /v1/recommend/placeholder`, 9장 2단계, D-8, D-20
 
-#### US-A2. 역 이름으로 검색 — **P1**
-> 지도를 헤매지 않고 역 이름을 입력해 빠르게 찾고 싶다.
-> 관련: `GET /v1/stations/search`
-
-- [ ] Given 검색 입력창, When 역명을 입력하면, Then `is_supported=true`인 역만 최대 N건(`limit`) 자동완성으로 보인다.
-- [ ] Given 검색 결과 항목, When 선택하면, Then 지도가 해당 역으로 이동하고 마커가 선택 상태가 된다.
-- [ ] Given 결과 없음, When 검색하면, Then "검색 결과가 없어요" 빈 상태가 표시된다.
-
-#### US-A3. 질의어(자연어) 입력 & 동적 placeholder — **P0**
-> 유형·예산을 일일이 고르지 않고, "게임 좋아하는 친구 3명과 밥먹고 놀다 술자리, 예산은 인당 3만원!" 처럼 **한 문장으로** 오늘의 상황을 입력하고 싶다. 입력창엔 상황에 맞는 예시가 떠 있으면 좋겠다.
-> 관련: `POST /courses/recommend`(query), `GET /v1/recommend/placeholder`, 9장 분류 단계, D-8
-
-- [ ] Given 역을 선택한 입력 화면, When 진입하면, Then **자유 텍스트 질의어 입력창** 하나가 제공된다(유형/예산 셀렉터 없음).
-- [ ] Given 질의어 입력창, When 비워두면, Then **동적 placeholder**가 노출된다: 우선순위는 ① 로그인 사용자의 **최근 질문** → ② **현재 날씨/시간대**에 맞는 추천 문구 → ③ 기본 예시. (예: "게임 좋아하는 친구 3명과 밥먹고 놀다 술자리 예산은 인당 3만원!")
+- [ ] Given 최초 화면, When 진입하면, Then **자유 텍스트 질의어 입력창 하나만** 제공된다(역 선택 UI·유형/예산 셀렉터 없음).
+- [ ] Given 질의어 입력창, When 비워두면, Then **동적 placeholder**가 노출된다: 우선순위는 ① 로그인 사용자의 **최근 질문** → ② **현재 날씨/시간대**에 맞는 추천 문구 → ③ 기본 예시.
 - [ ] Given 비로그인 사용자, When 질의어를 입력해 추천을 시도하면, Then 카카오 로그인 팝업이 뜨고(D-8), placeholder는 개인화 없이 날씨/시간대·기본 예시만 노출된다.
 - [ ] Given 질의어 미입력(공백), When 추천을 시도하면, Then 추천 버튼이 비활성/안내되고 `INVALID_PARAMETER`를 방지한다.
 - [ ] Given 서비스와 무관하거나 분류 불가한 질의어, When 추천하면, Then `INVALID_QUERY`("어떤 하루를 보내고 싶은지 알려주세요") 안내가 노출된다(9장 2단계).
 - [ ] Given 로그인 사용자의 `preferred_theme_tags`/`preferred_budget`/`preferred_companion_type`가 있음, When 분류 결과가 비면, Then 해당 기본값으로 보정된다.
 
-> **결정 D-8 반영**: 입력은 **단일 역 + 질의어** 한 벌. 질의어는 9장 2단계에서 LLM이 `theme_tags`·`budget_tier`·`companion_type`·`head_count`로 분류한다.
+> **결정 D-8 반영**: 입력은 **질의어 하나**. 질의어는 9장 2단계에서 LLM이 `location_mention`(지명)·`theme_tags`·`budget_tier`·`companion_type`·`head_count`로 분류한다.
 > **결정 D-1 반영**: 다중 역 선택 및 "추가 역 거리 제약 검증"은 MVP에서 **제외**한다. `POST /stations/validate`·`station.max_distance_km`·`TOO_MANY_STATIONS`·`STATION_TOO_FAR`는 미사용(V2 재검토).
+
+#### US-A3a. 🆕 질의어 속 위치 자동 해석 → 최근접 역 매핑 — **P0**
+> 문장 안에서 "홍대", "성수동", "합정역" 같은 지명·동네·역 이름을 알아서 읽어 가장 가까운 지원 역으로 바꿔주길 원한다. 지도를 보거나 역 이름을 따로 검색하고 싶지 않다.
+> 관련: 9장 2~2.5단계, D-20
+
+- [ ] Given 질의어에 역 이름이 직접 언급됨(예: "합정역"), When 분류하면, Then 해당 역 이름 그대로를 `location_mention`으로 추출한다.
+- [ ] Given 질의어에 동네·상권명만 언급됨(예: "연남동", "경리단길"), When 분류하면, Then LLM이 가장 가까운 지원 역 이름으로 변환해 `location_mention`에 담는다.
+- [ ] Given `location_mention`이 추출됨, When 서버가 처리하면, Then `stations` 테이블에서 이름 매칭으로 `station_id`를 resolve하고 이후 추천은 해당 역 반경 기준으로 진행된다.
+- [ ] Given `location_mention` 매칭 실패(DB에 없는 지명), When 처리하면, Then `STATION_NOT_FOUND`로 실패하지 않고 US-A4 추가 입력 Step으로 전환되어 역 검색 폴백을 노출한다.
+- [ ] Given 질의어에 지명이 전혀 없음, When 분류하면, Then `location_mention`은 없이(`missing_fields`에 `station_id` 포함) US-A4로 전환된다.
+
+#### US-A4. 🆕 질의어 분류 결과 불충분 시 추가 입력 요청 Step — **P0**
+> 질의어만으로 위치·인원·예산·동행 정보가 충분히 채워지지 않을 때, 빈 항목만 콕 집어 자연스럽게 추가로 물어보고 싶다. 처음부터 다시 쓰게 하지 않는다.
+> 관련: `POST /v1/courses/recommend` 9장 2/2.5단계, D-20
+>
+> **PRD 비정합 해소(v2.6)**: 본 스토리는 SCRUM-60에서 "PRD v2.3 비정합"으로 플래그되어 있었다. v2.6에서 팀 결정으로 정식 채택하며, 위치(`station_id`) 누락도 `missing_fields`에 포함하도록 범위를 확장한다.
+
+- [ ] Given 질의어 분류 시 `missing_fields`가 1개 이상(`station_id`/`companion_type`/`budget_tier` 등), When 처리하면, Then 클라이언트에 `NEEDS_CLARIFICATION`(200)과 함께 `partial_parsed_input`·`missing_fields[]`를 반환하고 LLM 코스 생성은 호출하지 않는다.
+- [ ] Given `NEEDS_CLARIFICATION` 응답에 `missing_fields`가 `station_id`를 포함, When FE가 처리하면, Then 역 검색 UI(구 US-A2 폴백, `StationSearch` 재사용)가 표시되고, 선택 즉시 해당 `station_id`가 채워진다.
+- [ ] Given `missing_fields`에 `companion_type`/`budget_tier`가 포함, When FE가 처리하면, Then 각각 4종 칩 입력이 표시된다.
+- [ ] Given 추가 입력 Step, When 사용자가 모든 누락 필드를 완성하면, Then 기존 `partial_parsed_input`에 병합되어 `station_id` + 완성된 `parsed_input`으로 추천을 재요청한다(생성 한도 1회만 차감).
+- [ ] Given 완전 분류 불가(`INVALID_QUERY`), When 처리하면, Then 추가 입력 Step 없이 "어떤 하루를 보내고 싶은지 알려주세요" 안내가 표시된다(일반 처리 유지).
+- [ ] Given `users.preferred_*`/`home_station_id` 기본값이 있는 로그인 사용자, When `missing_fields`를 채울 때, Then 해당 필드에 기본값이 미리 채워진 채 표시되어 확인만으로 넘어갈 수 있다.
+
+#### US-A1. 지도에서 지하철역 탐색·선택(위치 해석 실패 시 폴백) — **P1**
+> ~~사용자로서, 지도를 움직여 원하는 지하철역 1개를 골라 코스의 기준점으로 삼고 싶다.~~ → v2.6(D-20): 최초 화면의 1차 진입점이 아니라, **US-A4 추가 입력 Step 안에서만** 노출되는 보조 선택 수단.
+> 관련: `GET /v1/stations`
+
+- [ ] Given US-A4 추가 입력 Step에서 `station_id`가 누락 필드로 표시됨, When "지도로 찾기"를 선택하면, Then 뷰포트 `bounds` 내 지하철역 마커만 표시된다(일반 POI 미표시).
+- [ ] Given 역 마커, When 탭하면, Then 역명·노선 칩이 표시되고 해당 `station_id`가 채워진다.
+- [ ] Given 미지원 역(`is_supported=false`), When 선택하면, Then 선택이 막히고 `STATION_NOT_SUPPORTED`("아직 지원하지 않는 역이에요") 안내가 노출된다.
+- [ ] 🆕 Given GPS 미사용 정책(11장), When 지도를 처음 열면, Then 위치 자동수집 없이 기본 위치(서울 중심/마지막 본 영역)로 시작한다.
+
+#### US-A2. 역 이름으로 검색(위치 해석 실패 시 폴백) — **P1**
+> ~~지도를 헤매지 않고 역 이름을 입력해 빠르게 찾고 싶다.~~ → v2.6(D-20): US-A4 추가 입력 Step 안의 기본 폴백 컴포넌트(`StationSearch`)로 재사용.
+> 관련: `GET /v1/stations/search`
+
+- [ ] Given US-A4 추가 입력 Step의 역 검색창, When 역명을 입력하면, Then `is_supported=true`인 역만 최대 N건(`limit`) 자동완성으로 보인다.
+- [ ] Given 검색 결과 항목, When 선택하면, Then 해당 `station_id`가 채워지고 추가 입력 Step이 다음 누락 필드로 진행되거나(모두 채워졌다면) 추천이 재요청된다.
+- [ ] Given 결과 없음, When 검색하면, Then "검색 결과가 없어요" 빈 상태가 표시된다.
 
 ### Epic B. AI 코스 추천 (핵심)
 
-#### US-B1. AI 코스 추천 생성 (역 + 질의어) — **P0**
-> 로그인 후, 선택한 역 1개와 질의어 한 문장으로 동선이 잡힌 오늘의 플랜(코스) 한 벌을 AI가 만들어주길 원한다.
-> 관련: `POST /v1/courses/recommend`, 9장 시퀀스, F-01/F-02/F-15, D-8
+#### US-B1. AI 코스 추천 생성 (질의어 기반, 위치 자동 해석) — **P0**
+> 로그인 후, "어떻게 놀고 싶은지" 질의어 한 문장만으로 위치까지 포함해 동선이 잡힌 오늘의 플랜(코스) 한 벌을 AI가 만들어주길 원한다.
+> 관련: `POST /v1/courses/recommend`, 9장 시퀀스, F-01/F-02/F-15, D-8, D-20
 
 - [ ] Given 비로그인 사용자, When 추천을 요청하면, Then `UNAUTHORIZED`(401)로 막히고 카카오 로그인 팝업으로 유도된다(D-8).
-- [ ] Given 단일 역 정책, When 추천을 요청하면, Then `station_id`는 정확히 1개여야 하며 누락/형식 오류면 `INVALID_PARAMETER`로 거부된다.
-- [ ] Given 질의어, When 추천하면, Then LLM 분류 단계가 질의어를 `theme_tags[]`·`budget_tier`·`companion_type`·`head_count`로 파싱하고 결과가 응답의 `parsed_input`에 포함된다(9장 2단계). 분류 불가 시 `INVALID_QUERY`.
+- [ ] Given 클라이언트 요청, When 추천을 요청하면, Then `station_id`는 **선택값**이다 — 미포함 시 질의어에서 해석된 `location_mention`으로 서버가 최근접 지원 역을 resolve하며(D-20), 해석도 실패하면 `NEEDS_CLARIFICATION`(`missing_fields`에 `station_id` 포함, US-A4)으로 전환된다(단, resolve된 최종 역은 항상 정확히 1개, D-1 유지).
+- [ ] Given 질의어, When 추천하면, Then LLM 분류 단계가 질의어를 `location_mention`·`theme_tags[]`·`budget_tier`·`companion_type`·`head_count`로 파싱하고 결과가 응답의 `parsed_input`에 포함된다(9장 2단계). 분류 불가 시 `INVALID_QUERY`.
 - [ ] Given 선택한 역의 반경 5km 내 후보, When 추천하면, Then 후보가 부족하면 7km로 1회 확장하고, 그래도 없으면 `NO_COURSE_FOUND`를 반환한다.
 - [ ] Given LLM 코스 생성, When 응답을 만들면, Then 모든 장소는 방문순서(`order`)·도보거리·`description`을 포함하고 `total_walking_distance_km`가 구간 합과 일치한다.
 - [ ] Given LLM이 후보 풀 밖 장소를 반환(환각), When 검증하면, Then 위반 항목 제거 후 1회 재요청하고, 실패 시 `NO_COURSE_FOUND`를 반환한다.
@@ -515,9 +543,9 @@ CREATE TYPE served_from AS ENUM ('LLM', 'CACHE');
 CREATE TABLE recommendation_requests (
     id                BIGSERIAL PRIMARY KEY,
     user_id           BIGINT NOT NULL REFERENCES users(id),  -- D-8: 생성은 로그인 필수
-    station_id        BIGINT NOT NULL REFERENCES stations(station_id),
+    station_id        BIGINT NOT NULL REFERENCES stations(station_id),  -- D-20: 질의어 location_mention을 서버가 resolve한 결과(레코드 시점엔 항상 확정)
     query_text        TEXT NOT NULL,                     -- 입력 질의어(자연어)
-    parsed_input      JSONB,                             -- 분류 결과 {theme_tags: theme_tag[], budget_tier, companion_type, head_count}
+    parsed_input      JSONB,                             -- 분류 결과 {location_mention, theme_tags: theme_tag[], budget_tier, companion_type, head_count}
     exclude_place_ids BIGINT[] DEFAULT '{}',             -- 장소 제외 재생성(US-B3)
     served_from       served_from NOT NULL,
     idempotency_key   VARCHAR(64),
@@ -712,6 +740,7 @@ CREATE INDEX idx_rt_user ON refresh_tokens (user_id);
 > **페이지네이션**: 커서 기반. `?limit=20&cursor={opaque}`, 응답 `data.next_cursor`(없으면 null). `limit` 기본 20·최대 50.
 
 ### 7.1 GET /v1/stations — 지하철역 마커 조회
+> v2.6(D-20): 최초 화면 1차 진입점이 아니라 US-A4 추가 입력 Step(지도 폴백, US-A1)에서만 호출된다.
 ```
 GET /v1/stations?bounds={sw_lat},{sw_lng},{ne_lat},{ne_lng}
 ```
@@ -723,6 +752,7 @@ GET /v1/stations?bounds={sw_lat},{sw_lng},{ne_lat},{ne_lng}
 ```
 
 ### 7.2 GET /v1/stations/search — 역 이름 검색
+> v2.6(D-20): 최초 화면 1차 진입점이 아니라 US-A4 추가 입력 Step(역 검색 폴백, US-A2)에서만 호출된다.
 `is_supported=true`만 반환.
 ```
 GET /v1/stations/search?q=합정&limit=10
@@ -762,15 +792,22 @@ GET /v1/courses?station_id=239&theme=감성카페&theme=사진맛집&companion_t
 - **신선도 표시**: 조회 시 포함 장소의 `last_synced_at`/`status`를 조인해 코스 단위 동적 산출. `stale_days`(30일) 초과 시 배지, `CLOSED` 포함 시 경고 + 후순위.
 
 ### 7.4 POST /v1/courses/recommend — 코스 추천 (핵심)
-> **로그인 필수(D-8)**. 비로그인 401 `UNAUTHORIZED`. **`station_id`는 정확히 1개(D-1)**. 입력은 역 + 질의어(자연어). 하루 3회 무료(D-9).
+> **로그인 필수(D-8)**. 비로그인 401 `UNAUTHORIZED`. **`station_id`는 선택값**(D-20) — 질의어에서 해석된 `location_mention`으로 서버가 resolve하며, resolve된 최종 역은 항상 정확히 1개(D-1). 하루 3회 무료(D-9).
 ```json
-// Request
-{ "station_id": 239,
-  "query": "게임 좋아하는 친구 3명과 밥먹고 놀다 술자리 예산은 인당 3만원!",
+// Request (1차 요청 — station_id 없이 질의어만)
+{ "query": "게임 좋아하는 친구 3명과 홍대에서 밥먹고 놀다 술자리 예산은 인당 3만원!",
   "exclude_place_ids": [10293] }
 ```
 ```json
-// Response (200)
+// Request (US-A4 추가 입력 Step 완료 후 재요청 — station_id/parsed_input 직접 전달)
+{ "query": "게임 좋아하는 친구 3명과 밥먹고 놀다 술자리 예산은 인당 3만원!",
+  "station_id": 239,
+  "parsed_input": { "theme_tags": ["보드게임","맛집","술집"], "budget_tier": "30000_70000",
+                     "companion_type": "FRIEND", "head_count": 4 },
+  "exclude_place_ids": [] }
+```
+```json
+// Response (200, 정상 생성)
 { "success": true,
   "data": {
     "course_id": 8821,
@@ -778,6 +815,7 @@ GET /v1/courses?station_id=239&theme=감성카페&theme=사진맛집&companion_t
     "based_on_station": "합정",
     "search_radius_km": 5,
     "parsed_input": {
+      "location_mention": "홍대",
       "theme_tags": ["보드게임","맛집","술집"],
       "budget_tier": "30000_70000",
       "companion_type": "FRIEND",
@@ -801,7 +839,14 @@ GET /v1/courses?station_id=239&theme=감성카페&theme=사진맛집&companion_t
     "disclaimer": "장소 정보는 최근 한 달 이내 기준이에요. 가격·영업시간은 변동될 수 있어 매장 확인을 권장드려요."
   }, "error": null }
 ```
-- `query` → LLM 분류(9장 2단계) → `parsed_input`. 분류 불가 시 `INVALID_QUERY`.
+```json
+// Response (200, 위치/기타 필드 부족 — US-A4)
+{ "status": "NEEDS_CLARIFICATION",
+  "partial_parsed_input": { "theme_tags": ["보드게임","맛집","술집"], "head_count": 4 },
+  "missing_fields": ["station_id", "budget_tier"] }
+```
+- `query` → LLM 분류(9장 2단계) → `location_mention` + `parsed_input`. 분류 불가 시 `INVALID_QUERY`, 필드 일부 부족 시 `NEEDS_CLARIFICATION`(US-A4).
+- `location_mention`으로 역 resolve 실패(매칭되는 `stations` 없음) 시에도 하드 에러가 아니라 `NEEDS_CLARIFICATION`(`missing_fields: ["station_id"]`)로 전환된다.
 - 생성 코스는 즉시 DB 저장·공개(D-10). `similar_top_courses`는 같은 역·겹치는 테마 중 베이지안 상위 N개(`recommend.similar_top_n=3`, D-13).
 - `daily_remaining`: 오늘 남은 무료 생성 횟수(`ratelimit.user_daily` 기준). 멱등 재요청·`CACHE` 적중은 미차감(D-9).
 - 한도 소진 시 `429 RATE_LIMIT_EXCEEDED`. **재추천(regenerate) API는 제거됨**(D-9) — 결과가 아쉬우면 질의어를 바꿔 다시 생성하거나 `exclude_place_ids`로 장소를 빼고 재생성(US-B3).
@@ -879,8 +924,10 @@ POST /v1/courses/{course_id}/reviews/{review_id}/report    // 리뷰 신고 (D-1
 
 ### 7.6b GET /v1/recommend/placeholder — 질의어 입력창 동적 placeholder
 > 입력창에 띄울 예시 문구를 반환. 우선순위: 최근 질문(로그인) → 날씨/시간대 → 기본 예시(US-A3, D-17).
+> **v2.6(D-20)**: 최초 화면엔 아직 확정된 역이 없으므로 `station_id`는 **선택값**이다. 미포함 시 서울 기본 좌표(시청 등)로 날씨를 조회한다. 로그인 사용자의 `home_station_id`가 있으면 그 좌표를 우선 사용.
 ```
-GET /v1/recommend/placeholder?station_id=239
+GET /v1/recommend/placeholder
+GET /v1/recommend/placeholder?station_id=239   // US-A4 폴백 등으로 역이 이미 확정된 경우
 ```
 ```json
 { "success": true,
@@ -1015,12 +1062,16 @@ GET /v1/courses/{course_id}
 ```
 0. 인증 검사: 로그인 필수(없으면 401 UNAUTHORIZED), 종료                         [D-8]
    멱등성 검사: Idempotency-Key 동일 → 저장된 이전 결과 반환(LLM 미호출·한도 미차감), 종료
-1. 입력 검증 + 한도: station_id 1개(아니면 INVALID_PARAMETER), query 비어있지 않음.
+1. 입력 검증 + 한도: query 비어있지 않음(station_id는 선택값, D-20).
    일일 생성 횟수 COUNT(recommendation_requests, served_from=LLM, 오늘 KST) < ratelimit.user_daily(=3), 초과 시 429  [D-9]
 2. 질의어 분류(LLM, 저비용 모델): query → parsed_input
-   { theme_tags[], budget_tier, companion_type, head_count }                     [D-8]
-   └ 분류 결과 빈 항목은 사용자 preferred_* 로 보정
+   { location_mention, theme_tags[], budget_tier, companion_type, head_count }   [D-8, D-20]
+   └ 분류 결과 빈 항목은 사용자 preferred_*/home_station_id 로 보정
+   └ 그래도 비는 필드(station_id 포함)가 있으면 → NEEDS_CLARIFICATION(200) 반환, LLM 미호출·한도 미차감, 종료 (US-A4)
    └ 서비스 무관/분류 불가 → INVALID_QUERY, 종료
+2.5 위치 해석(신규, D-20): req.station_id가 이미 주어졌으면(US-A4 재요청) 그대로 사용.
+    아니면 location_mention으로 stations 테이블 이름 매칭 → station_id resolve.
+    └ 매칭 실패 → missing_fields=["station_id"]로 NEEDS_CLARIFICATION(200), 종료 (US-A3a/US-A4)
 3. 캐시 조회(DB): key = hash(station_id + 정규화 parsed_input) → `course_cache` 테이블 조회
    └ 히트 → 캐시 반환(served_from=CACHE, 한도 미차감), 단 7단계 유사 코스는 최신 조회, 종료
 4. 후보 장소 조회: PostGIS ST_DWithin로 역 5km 반경 + theme_tags/budget 필터 (F-01)
@@ -1048,7 +1099,7 @@ GET /v1/courses/{course_id}
 
 | HTTP | code | 설명 |
 |---|---|---|
-| 400 | `INVALID_PARAMETER` | 필수 파라미터 누락/형식 오류 (`station_id` 누락, `query` 공백, 점수 5단위·범위 위반 등) |
+| 400 | `INVALID_PARAMETER` | 필수 파라미터 누락/형식 오류 (`query` 공백, 점수 5단위·범위 위반 등) |
 | 400 | `INVALID_QUERY` | 질의어를 코스 조건으로 분류할 수 없음(서비스 무관/모호) |
 | 401 | `UNAUTHORIZED` | 토큰 누락/만료. **추천 생성은 로그인 필수**(D-8) |
 | 404 | `STATION_NOT_SUPPORTED` | 미지원 역 |
@@ -1057,7 +1108,9 @@ GET /v1/courses/{course_id}
 | 503 | `UPSTREAM_UNAVAILABLE` | 외부 지도/플레이스 API 장애 |
 | 503 | `LLM_UNAVAILABLE` | Claude API 실패/타임아웃(유사 코스 제안·재시도 권장, 한도 미차감) |
 
+> **에러 아님(200)**: `NEEDS_CLARIFICATION` — 질의어 분류 결과 중 `station_id` 등 필수 필드가 비었을 때(US-A4, D-20). `missing_fields[]`/`partial_parsed_input`을 담아 200으로 반환하며, LLM 코스 생성은 호출되지 않고 일일 한도도 차감되지 않는다.
 > **삭제(D-1)**: `TOO_MANY_STATIONS`, `STATION_TOO_FAR`는 단일 역 정책으로 제거.
+> **삭제(D-20)**: 구 `NO_STATION`/`STATION_NOT_FOUND`류 하드 에러는 `NEEDS_CLARIFICATION` 폴백으로 대체.
 > **삭제(D-9)**: regenerate·`served_from=SAVED_LIST` 관련 분기 제거. 멱등키 재요청은 에러가 아니라 이전 결과를 200으로 반환(한도 미차감).
 
 ---
@@ -1068,7 +1121,7 @@ GET /v1/courses/{course_id}
 - JWT: access 단기(30분) + refresh 회전(rotation), refresh는 DB 저장/무효화(6.2.11). 재사용 감지 시 전 토큰 폐기.
 - 성별·출생연도 등 개인정보: 수집 목적 고지 + 분리 동의, 선택 입력, 미입력 허용.
 - 저장 공개 코스는 생성자 비식별.
-- 위치는 GPS 자동 수집 미사용(지도 탭 선택), 위치 정보는 URL 파라미터 미포함.
+- 위치는 GPS 자동 수집 미사용. 질의어 텍스트 안의 지명·동네 언급을 LLM이 해석하거나(D-20, 주 경로), 그마저 없으면 US-A4 추가 입력 Step의 지도 탭/역 검색(폴백)으로 사용자가 직접 선택한다. 위치 정보는 URL 파라미터 미포함.
 - 비로그인 리뷰 식별 IP는 **해시/마스킹(`ip_hash`)만 저장**하고 원문 IP는 장기 저장 금지. 리뷰 레이트리밋 키도 `ip_hash` 사용.
 - 질의어(`query_text`)는 비식별 코스 스냅샷으로만 보관하며 개인식별정보 결합 금지. LLM 트레이스(Langfuse)에 개인식별정보·질의어 원문 위치 미포함.
 

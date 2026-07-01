@@ -1,0 +1,97 @@
+.container {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 40px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  margin: 0;
+  color: var(--foreground);
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--foreground-muted);
+  margin: -12px 0 0;
+  line-height: 1.6;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--foreground-muted);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--foreground-muted);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.chip:hover {
+  border-color: var(--neon-purple);
+  color: var(--foreground);
+}
+
+.chipActive {
+  border-color: var(--neon-purple);
+  background: rgba(168, 85, 247, 0.12);
+  color: var(--foreground);
+}
+
+.error {
+  font-size: 13px;
+  color: #f87171;
+  margin: 0;
+}
+
+.submitBtn {
+  padding: 17px;
+  background: var(--gradient-neon);
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: box-shadow 0.25s, transform 0.15s, opacity 0.15s;
+}
+
+.submitBtn:hover:not(:disabled) {
+  box-shadow: var(--glow-btn);
+  transform: translateY(-2px);
+}
+
+.submitBtn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}

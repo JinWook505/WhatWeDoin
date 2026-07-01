@@ -115,6 +115,33 @@ async def test_recommend_invalid_query():
 
 
 @pytest.mark.asyncio
+async def test_recommend_needs_clarification_when_station_unresolved():
+    app.dependency_overrides[get_db] = lambda: _make_session()
+
+    classification = QueryClassification(
+        theme_tags=[ThemeTag.FOOD, ThemeTag.CAFE],
+        station_name=None,
+        budget_tier=BudgetTier.UNDER_30000,
+        companion_type=CompanionType.COUPLE,
+        head_count=2,
+    )
+
+    with patch("app.routers.recommend.classify_query", AsyncMock(return_value=classification)):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/v1/courses/recommend",
+                json={"query": "맛있는 거 먹고 카페 가고 싶어"},
+            )
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "NEEDS_CLARIFICATION"
+    assert "station_id" in body["missing_fields"]
+
+
+@pytest.mark.asyncio
 async def test_recommend_no_candidates():
     app.dependency_overrides[get_db] = lambda: _make_session()
 
