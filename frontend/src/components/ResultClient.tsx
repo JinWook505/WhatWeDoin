@@ -8,14 +8,16 @@ import styles from "./ResultClient.module.css"
 interface Props {
   initialData: CourseData
   query: string
+  dailyRemaining?: number | null
 }
 
-export default function ResultClient({ initialData, query }: Props) {
+export default function ResultClient({ initialData, query, dailyRemaining: initialRemaining }: Props) {
   const [data, setData] = useState<CourseData>(initialData)
   const [excludedIds, setExcludedIds] = useState<Set<number>>(new Set())
   const [regenerating, setRegenerating] = useState(false)
   const [showWarning, setShowWarning] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [remaining, setRemaining] = useState<number | null>(initialRemaining ?? null)
 
   const toggleExclude = useCallback((placeId: number) => {
     setExcludedIds((prev) => {
@@ -31,10 +33,11 @@ export default function ResultClient({ initialData, query }: Props) {
     setRegenerating(true)
     setError(null)
     try {
-      const res = await recommend(query, Array.from(excludedIds))
+      const res = await recommend(query, Array.from(excludedIds), crypto.randomUUID())
       if (res.data) {
         setData(res.data)
         setExcludedIds(new Set())
+        if (res.daily_remaining != null) setRemaining(res.daily_remaining)
         window.scrollTo({ top: 0, behavior: "smooth" })
       }
     } catch (err: unknown) {
@@ -50,7 +53,14 @@ export default function ResultClient({ initialData, query }: Props) {
   return (
     <>
       <header className={styles.header}>
-        <a href="/" className={styles.backLink}>← 다시 검색</a>
+        <div className={styles.topBar}>
+          <a href="/" className={styles.backLink}>← 다시 검색</a>
+          {remaining != null && (
+            <span className={styles.remainingBadge}>
+              오늘 {remaining}회 남음
+            </span>
+          )}
+        </div>
         {data.station_name && (
           <span className={styles.station}>{data.station_name} 근처</span>
         )}
@@ -92,7 +102,9 @@ export default function ResultClient({ initialData, query }: Props) {
           <div className={styles.dialog} onClick={(e) => e.stopPropagation()}>
             <p className={styles.dialogTitle}>코스를 재생성할까요?</p>
             <p className={styles.dialogDesc}>
-              일일 추천 잔여 횟수가 1회 차감됩니다.
+              {remaining != null
+                ? `일일 잔여 횟수 ${remaining}회 중 1회가 차감됩니다.`
+                : "일일 추천 잔여 횟수가 1회 차감됩니다."}
             </p>
             <div className={styles.dialogActions}>
               <button className={styles.cancelBtn} onClick={() => setShowWarning(false)}>

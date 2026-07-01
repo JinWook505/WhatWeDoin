@@ -7,6 +7,12 @@
   border-bottom: 1px solid var(--border);
 }
 
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .backLink {
   font-size: 13px;
   color: var(--foreground-muted);
@@ -16,6 +22,17 @@
 }
 
 .backLink:hover { color: var(--neon-purple); }
+
+.remainingBadge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: rgba(168, 85, 247, 0.15);
+  color: var(--neon-purple);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
 
 .station {
   font-size: 11px;
