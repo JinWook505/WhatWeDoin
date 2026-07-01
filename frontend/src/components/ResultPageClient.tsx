@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import {
   recommend,
@@ -30,15 +30,20 @@ export default function ResultPageClient() {
   const [dailyRemaining, setDailyRemaining] = useState<number | null>(null)
   const [clarification, setClarification] = useState<ClarificationResponse | null>(null)
   const [error, setError] = useState<ErrorState | null>(null)
+  const idempotencyKeyRef = useRef<{ query: string | null; key: string } | null>(null)
 
   useEffect(() => {
     if (!q) {
       setLoading(false)
       return
     }
+    if (idempotencyKeyRef.current?.query !== q) {
+      idempotencyKeyRef.current = { query: q, key: crypto.randomUUID() }
+    }
+    const idempotencyKey = idempotencyKeyRef.current.key
     let cancelled = false
     setLoading(true)
-    recommend(q)
+    recommend(q, [], idempotencyKey)
       .then((res) => {
         if (cancelled) return
         if (isClarificationResult(res)) {
