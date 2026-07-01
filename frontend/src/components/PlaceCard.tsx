@@ -49,7 +49,12 @@ export default function PlaceCard({ place, courseId, isExcluded = false, onToggl
         <div className={styles.body}>
           <div className={styles.topRow}>
             <div className={styles.nameBlock}>
-              <h3 className={styles.name}>{place.name}</h3>
+              <div className={styles.nameRow}>
+                <h3 className={styles.name}>{place.name}</h3>
+                {place.status === "CLOSED" && (
+                  <span className={styles.closedBadge}>폐업</span>
+                )}
+              </div>
               {place.price_range && (
                 <span className={styles.price}>{place.price_range}</span>
               )}

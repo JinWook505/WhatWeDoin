@@ -28,6 +28,7 @@ export interface PlaceDetail {
   walking_distance_from_station_km: number | null
   lat: number | null
   lng: number | null
+  status?: string | null
 }
 
 export interface StageDetail {
