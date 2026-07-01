@@ -27,7 +27,7 @@ export default function AuthCallbackPage() {
     fetch(`${API_URL}/v1/auth/kakao`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, redirect_uri: REDIRECT_URI }),
+      body: JSON.stringify({ authorization_code: code, redirect_uri: REDIRECT_URI }),
     })
       .then(async (res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
