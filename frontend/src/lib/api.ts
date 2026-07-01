@@ -26,6 +26,8 @@ export interface PlaceDetail {
   thumbnail_url: string | null
   description: string
   walking_distance_from_station_km: number | null
+  lat: number | null
+  lng: number | null
 }
 
 export interface StageDetail {
@@ -43,6 +45,7 @@ export interface CourseData {
   stages: StageDetail[]
   similar_top_courses: { course_id: number; title: string; bayesian_score: number }[]
   served_from: string
+  total_walking_distance_km: number | null
 }
 
 export interface RecommendResponse {

@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react"
 import { recommend, isClarificationResult, CourseData } from "@/lib/api"
 import CourseTimeline from "./CourseTimeline"
+import CourseMap from "./CourseMap"
 import ReviewSection from "./ReviewSection"
 import SimilarCourses from "./SimilarCourses"
 import { incrementUsedCount } from "@/components/QuotaBadge"
@@ -78,6 +79,14 @@ export default function ResultClient({ initialData, query, dailyRemaining: initi
         <h1 className={styles.title}>{data.title}</h1>
         {data.description && <p className={styles.desc}>{data.description}</p>}
       </header>
+
+      <CourseMap stages={data.stages} excludedIds={excludedIds} />
+
+      {data.total_walking_distance_km != null && (
+        <p className={styles.distance}>
+          총 도보 이동거리 약 {data.total_walking_distance_km}km
+        </p>
+      )}
 
       <CourseTimeline
         stages={data.stages}
