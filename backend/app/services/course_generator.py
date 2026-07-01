@@ -254,7 +254,7 @@ async def upsert_course(
     companion_type: str,
     query_text: str,
     candidates: list[dict],
-) -> int:
+) -> tuple[int, float | None]:
     """Persist course via content_hash UPSERT. Returns course_id."""
     candidates_by_id = {c["place_id"]: c for c in candidates}
 
@@ -286,16 +286,23 @@ async def upsert_course(
              CAST(:places AS jsonb), :content_hash, now(), now())
         ON CONFLICT (content_hash) DO UPDATE
             SET updated_at = now()
-        RETURNING course_id
+        RETURNING course_id, total_walking_distance_km
     """)
 
-    row = await session.execute(sql, {
-        "station_id": station_id,
-        "query_text": query_text,
-        "places": places_json,
-        "content_hash": course.content_hash,
-    })
-    course_id = row.scalar_one()
+    row = (
+        await session.execute(sql, {
+            "station_id": station_id,
+            "query_text": query_text,
+            "places": places_json,
+            "content_hash": course.content_hash,
+        })
+    ).mappings().one()
+    course_id = row["course_id"]
+    total_walking_distance_km = (
+        float(row["total_walking_distance_km"])
+        if row["total_walking_distance_km"] is not None
+        else None
+    )
 
     # upsert course_places
     await session.execute(
@@ -327,4 +334,4 @@ async def upsert_course(
             )
 
     await session.commit()
-    return course_id
+    return course_id, total_walking_distance_km
