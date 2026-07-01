@@ -298,3 +298,44 @@ async def test_recommend_generation_failed():
 
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "LLM_UNAVAILABLE"
+
+
+@pytest.mark.asyncio
+async def test_build_response_from_course_id_includes_lat_lng_and_total_distance():
+    """Cache/idempotency replay path (_build_response_from_course_id) must expose the same
+    lat/lng + total_walking_distance_km fields as a freshly generated recommend response."""
+    from app.routers.recommend import _build_response_from_course_id
+
+    session = AsyncMock()
+
+    course_result = MagicMock()
+    course_result.mappings.return_value.first.return_value = {
+        "course_id": 42,
+        "theme_tags": ["FOOD"],
+        "station_id": 1,
+        "total_walking_distance_km": 1.2,
+        "station_name": "홍대입구",
+    }
+
+    place_result = MagicMock()
+    place_result.mappings.return_value.all.return_value = [
+        {
+            "stage_order": 1, "option_index": 1, "stage_label": "식사/카페",
+            "walking_distance_from_station_km": 0.1,
+            "place_id": 1, "name": "카페A", "category": "CAFE", "address": "서울",
+            "lat": 37.5, "lng": 127.0,
+            "business_hours": None, "price_range": "1만원대",
+            "user_rating_sum": 10, "user_rating_count": 5,
+            "map_url": None, "thumbnail_url": None, "description": "커피 한 잔",
+        },
+    ]
+
+    session.execute = AsyncMock(side_effect=[course_result, place_result])
+
+    result = await _build_response_from_course_id(session, 42, served_from="CACHE")
+
+    assert result is not None
+    assert result["total_walking_distance_km"] == 1.2
+    assert result["stages"][0]["options"][0]["lat"] == 37.5
+    assert result["stages"][0]["options"][0]["lng"] == 127.0
+    assert result["served_from"] == "CACHE"
