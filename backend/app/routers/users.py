@@ -358,10 +358,10 @@ async def list_my_courses(
                     c.bayesian_score, c.rating_count, c.total_walking_distance_km,
                     c.created_at, latest.requested_at,
                     (
-                        SELECT COALESCE(json_agg(p.name ORDER BY cp.visit_order), '[]'::json)
+                        SELECT COALESCE(json_agg(p.name ORDER BY cp.stage_order), '[]'::json)
                         FROM course_places cp
                         JOIN places p ON p.place_id = cp.place_id
-                        WHERE cp.course_id = c.course_id
+                        WHERE cp.course_id = c.course_id AND cp.option_index = 1
                     ) AS preview_places
                 FROM (
                     SELECT course_id, MAX(created_at) AS requested_at

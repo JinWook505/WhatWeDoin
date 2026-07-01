@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from app.main import app
 from app.core.db import get_db
 from app.services.classifier import QueryClassification, InvalidQueryError, NeedsClarificationError
-from app.services.course_generator import GeneratedCourse, CourseGenerationError
+from app.services.course_generator import GeneratedCourse, GeneratedStage, StageOption, CourseGenerationError
 from app.models.enums import ThemeTag, BudgetTier, CompanionType
 
 
@@ -31,22 +31,17 @@ CANDIDATES = [
 GENERATED_COURSE = GeneratedCourse(
     title="즐거운 홍대 코스",
     description="카페, 밥, 공원을 즐기는 코스",
-    place_ids=[1, 2, 3],
-    place_descriptions={1: "커피 한 잔", 2: "맛있는 점심", 3: "산책"},
+    stages=[
+        GeneratedStage(stage_label="식사/카페", options=[
+            StageOption(place_id=1, description="커피 한 잔"),
+            StageOption(place_id=2, description="맛있는 점심"),
+        ]),
+        GeneratedStage(stage_label="산책", options=[
+            StageOption(place_id=3, description="산책"),
+        ]),
+    ],
     content_hash="abc123",
 )
-
-PLACE_ROWS = [
-    {"place_id": 1, "name": "카페A", "category": "CAFE", "address": "서울",
-     "business_hours": None, "price_range": "1만원대", "user_rating_sum": 10,
-     "user_rating_count": 5, "map_url": None, "thumbnail_url": None},
-    {"place_id": 2, "name": "식당B", "category": "FOOD", "address": "서울",
-     "business_hours": None, "price_range": "2만원대", "user_rating_sum": 8,
-     "user_rating_count": 4, "map_url": None, "thumbnail_url": None},
-    {"place_id": 3, "name": "공원C", "category": "PARK", "address": "서울",
-     "business_hours": None, "price_range": None, "user_rating_sum": 0,
-     "user_rating_count": 0, "map_url": None, "thumbnail_url": None},
-]
 
 
 @pytest.mark.asyncio
@@ -54,7 +49,7 @@ async def test_recommend_success():
     mock_session = _make_session()
 
     mapping_result = MagicMock()
-    mapping_result.mappings.return_value.all.return_value = PLACE_ROWS
+    mapping_result.mappings.return_value.all.return_value = []
     mock_session.execute = AsyncMock(return_value=mapping_result)
     mock_session.commit = AsyncMock()
 
@@ -72,9 +67,6 @@ async def test_recommend_success():
         patch("app.routers.recommend.search_candidate_places", AsyncMock(return_value=CANDIDATES)),
         patch("app.routers.recommend.generate_course", AsyncMock(return_value=GENERATED_COURSE)),
         patch("app.routers.recommend.upsert_course", AsyncMock(return_value=42)),
-        patch("app.routers.recommend._fetch_place_map", AsyncMock(return_value={
-            row["place_id"]: row for row in PLACE_ROWS
-        })),
     ):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post(
@@ -90,7 +82,9 @@ async def test_recommend_success():
     data = body["data"]
     assert data["course_id"] == 42
     assert data["title"] == "즐거운 홍대 코스"
-    assert len(data["places"]) == 3
+    assert len(data["stages"]) == 2
+    assert len(data["stages"][0]["options"]) == 2
+    assert data["stages"][0]["options"][0]["name"] == "카페A"
     assert data["served_from"] == "LLM"
 
 

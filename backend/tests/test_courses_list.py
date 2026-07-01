@@ -126,7 +126,8 @@ async def test_course_detail_place_category_uses_korean_label():
         "rating_sum": 0, "created_at": None, "station_name": "강남",
     }
     place_row = {
-        "visit_order": 1, "place_id": 1, "description": "", "walking_distance_to_next_km": None,
+        "stage_order": 1, "option_index": 1, "stage_label": "저녁 식사",
+        "place_id": 1, "description": "", "walking_distance_from_station_km": None,
         "name": "테스트 식당", "category": "FD6", "address": None, "lat": None, "lng": None,
         "price_range": None, "business_hours": None, "map_url": None,
         "user_rating_sum": 0, "user_rating_count": 0, "status": "OPEN", "last_synced_at": None,
@@ -144,5 +145,48 @@ async def test_course_detail_place_category_uses_korean_label():
     app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    places = response.json()["data"]["places"]
-    assert places[0]["category"] == "음식점"
+    stages = response.json()["data"]["stages"]
+    assert stages[0]["stage_label"] == "저녁 식사"
+    assert stages[0]["options"][0]["category"] == "음식점"
+
+
+@pytest.mark.asyncio
+async def test_course_detail_groups_multiple_options_under_one_stage():
+    """SCRUM-78: a single stage can offer 2-3 alternative places (택1) — rows
+    sharing the same stage_order must be grouped into one stage's options list,
+    not flattened into separate stages."""
+    course_row = {
+        "course_id": 7, "station_id": 1, "theme_tags": ["FOOD"],
+        "budget_tier": "UNDER_30000", "companion_type": "COUPLE", "head_count": 2,
+        "total_walking_distance_km": None, "bayesian_score": 0, "rating_count": 0,
+        "rating_sum": 0, "created_at": None, "station_name": "강남",
+    }
+    base_place = {
+        "description": "", "walking_distance_from_station_km": None,
+        "address": None, "lat": None, "lng": None, "price_range": None,
+        "business_hours": None, "map_url": None, "user_rating_sum": 0,
+        "user_rating_count": 0, "status": "OPEN", "last_synced_at": None,
+    }
+    place_rows = [
+        {**base_place, "stage_order": 1, "option_index": 1, "stage_label": "저녁 식사", "place_id": 1, "name": "식당A", "category": "FD6"},
+        {**base_place, "stage_order": 1, "option_index": 2, "stage_label": "저녁 식사", "place_id": 2, "name": "식당B", "category": "FD6"},
+        {**base_place, "stage_order": 2, "option_index": 1, "stage_label": "카페", "place_id": 3, "name": "카페C", "category": "CE7"},
+    ]
+    session = AsyncMock()
+    course_result = MagicMock()
+    course_result.mappings.return_value.first.return_value = course_row
+    places_result = MagicMock()
+    places_result.mappings.return_value.all.return_value = place_rows
+    session.execute = AsyncMock(side_effect=[course_result, places_result])
+
+    app.dependency_overrides[get_db] = lambda: session
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/courses/7")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    stages = response.json()["data"]["stages"]
+    assert len(stages) == 2
+    assert len(stages[0]["options"]) == 2
+    assert [o["name"] for o in stages[0]["options"]] == ["식당A", "식당B"]
+    assert len(stages[1]["options"]) == 1

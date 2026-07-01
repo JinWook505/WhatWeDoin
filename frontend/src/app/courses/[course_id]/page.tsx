@@ -6,15 +6,20 @@ import { THEME_TAG_KO, BUDGET_TIER_KO, COMPANION_TYPE_KO } from "@/lib/enumOptio
 const API_URL =
   process.env.INTERNAL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://backend:8080"
 
-interface Place {
-  order: number
+interface PlaceOption {
   place_id: number
   name: string
   category: string | null
   address: string | null
   description: string
-  walking_distance_to_next_km: number | null
+  walking_distance_from_station_km: number | null
   status: string | null
+}
+
+interface Stage {
+  stage_order: number
+  stage_label: string
+  options: PlaceOption[]
 }
 
 interface CourseDetail {
@@ -23,8 +28,7 @@ interface CourseDetail {
   theme_tags: string[]
   budget_tier: string | null
   companion_type: string | null
-  places: Place[]
-  total_walking_distance_km: number | null
+  stages: Stage[]
   bayesian_score: number
   avg_score: number | null
   rating_count: number
@@ -94,26 +98,35 @@ export default async function CourseDetailPage({
         )}
       </header>
 
-      <ol className={styles.places}>
-        {course.places.map((p) => (
-          <li key={p.place_id} className={styles.placeItem}>
-            <div className={styles.placeOrder}>{p.order}</div>
-            <div className={styles.placeBody}>
-              <div className={styles.placeName}>{p.name}</div>
-              {p.category && <div className={styles.placeMeta}>{p.category}</div>}
-              {p.address && <div className={styles.placeMeta}>{p.address}</div>}
-              {p.description && <p className={styles.placeDesc}>{p.description}</p>}
-              {p.status === "CLOSED" && (
-                <span className={styles.closedBadge}>폐업</span>
-              )}
-              {p.walking_distance_to_next_km != null && (
-                <p className={styles.walk}>↓ 도보 {p.walking_distance_to_next_km.toFixed(1)} km</p>
-              )}
-              <PlaceReportButton placeId={p.place_id} placeName={p.name} />
-            </div>
-          </li>
+      <div className={styles.stages}>
+        {course.stages.map((stage) => (
+          <section key={stage.stage_order} className={styles.stageSection}>
+            <h2 className={styles.stageHeader}>
+              {stage.stage_order}단계 · {stage.stage_label}
+              {stage.options.length > 1 && <span className={styles.pickOne}>택1</span>}
+            </h2>
+            <ol className={styles.places}>
+              {stage.options.map((p) => (
+                <li key={p.place_id} className={styles.placeItem}>
+                  <div className={styles.placeBody}>
+                    <div className={styles.placeName}>{p.name}</div>
+                    {p.category && <div className={styles.placeMeta}>{p.category}</div>}
+                    {p.address && <div className={styles.placeMeta}>{p.address}</div>}
+                    {p.description && <p className={styles.placeDesc}>{p.description}</p>}
+                    {p.status === "CLOSED" && (
+                      <span className={styles.closedBadge}>폐업</span>
+                    )}
+                    {p.walking_distance_from_station_km != null && (
+                      <p className={styles.walk}>🚶 역에서 도보 {p.walking_distance_from_station_km.toFixed(1)} km</p>
+                    )}
+                    <PlaceReportButton placeId={p.place_id} placeName={p.name} />
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
         ))}
-      </ol>
+      </div>
 
       <ReviewSection courseId={course.course_id} />
     </div>

@@ -14,7 +14,6 @@ export interface StationResult {
 }
 
 export interface PlaceDetail {
-  order: number
   place_id: number
   name: string
   category: string | null
@@ -26,6 +25,13 @@ export interface PlaceDetail {
   map_url: string | null
   thumbnail_url: string | null
   description: string
+  walking_distance_from_station_km: number | null
+}
+
+export interface StageDetail {
+  stage_order: number
+  stage_label: string
+  options: PlaceDetail[]
 }
 
 export interface CourseData {
@@ -34,8 +40,7 @@ export interface CourseData {
   description: string
   station_name: string | null
   theme_tags: string[]
-  places: PlaceDetail[]
-  total_walking_distance_km: number | null
+  stages: StageDetail[]
   similar_top_courses: { course_id: number; title: string; bayesian_score: number }[]
   served_from: string
 }
