@@ -6,7 +6,7 @@ describe("logout", () => {
     localStorage.clear()
   })
 
-  it("clears tokens and resets today's quota counter", async () => {
+  it("clears tokens but does not reset today's quota counter", async () => {
     setTokens("access-token", "refresh-token")
     incrementUsedCount()
     incrementUsedCount()
@@ -19,10 +19,10 @@ describe("logout", () => {
 
     expect(localStorage.getItem(ACCESS_TOKEN_KEY)).toBeNull()
     expect(localStorage.getItem(REFRESH_TOKEN_KEY)).toBeNull()
-    expect(getRemainingCount()).toBe(3)
+    expect(getRemainingCount()).toBe(0)
   })
 
-  it("resets quota counter even if the logout request fails", async () => {
+  it("does not reset quota counter even if the logout request fails", async () => {
     setTokens("access-token", "refresh-token")
     incrementUsedCount()
     expect(getRemainingCount()).toBe(2)
@@ -31,6 +31,6 @@ describe("logout", () => {
 
     await logout()
 
-    expect(getRemainingCount()).toBe(3)
+    expect(getRemainingCount()).toBe(2)
   })
 })
