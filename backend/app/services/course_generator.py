@@ -10,41 +10,84 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.llm import LLMMessage, get_llm_provider
 from app.services.llm.base import LLMUnavailableError
 from app.services.place_search import search_candidate_places
+from app.services.weather import fetch_weather
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = """당신은 서울 지하철 역 기반 놀거리 코스 추천 전문가입니다.
-제공된 후보 장소 목록에서만 선택하여 반드시 3개 이상(최대 5개)의 장소로 구성된 코스를 만들어 주세요.
-2개 이하는 절대 안 됩니다. 후보가 충분하면 3~4개를 선택하세요.
-반드시 후보 목록에 있는 place_id만 사용해야 합니다.
+_MIN_STAGES = 2
+_MAX_STAGES = 4
+_MIN_OPTIONS_PER_STAGE = 1
+_MAX_OPTIONS_PER_STAGE = 3
+_MAX_STAGE_LABEL_LEN = 30
+
+_SYSTEM_PROMPT = f"""당신은 서울 지하철 역 기반 놀거리 코스 추천 전문가입니다.
+오늘의 날씨와 사용자 요청에 맞춰 {_MIN_STAGES}~{_MAX_STAGES}개의 "단계(stage)"로 하루 코스를 설계하세요.
+각 단계는 하나의 활동 유형(예: 저녁 식사, 카페/디저트, 야외 산책, 실내 액티비티)을 나타내며,
+제공된 후보 장소 목록에서 서로 다른 장소 {_MIN_OPTIONS_PER_STAGE}~{_MAX_OPTIONS_PER_STAGE}개를
+그 단계의 "대안(선택지)"으로 배정하세요. 사용자는 각 단계에서 대안 중 하나를 골라 방문합니다.
+
+규칙:
+- 일반적인 "오늘 뭐하지" 요청은 서로 다른 활동 유형으로 단계를 구성하세요. 같은 활동을 억지로
+  두 번 반복하지 마세요(예: 식사 단계를 두 개 만들지 마세요).
+- 단, 사용자가 "OO 투어"처럼 같은 테마를 명시적으로 반복 요청한 경우(예: "맛집 투어", "카페 투어")는
+  예외로, 같은 카테고리의 단계를 여러 개 만들어도 됩니다.
+- 비/눈 등 날씨가 좋지 않으면 실내 위주 단계로 구성하고 야외 단계(공원 산책, 야경 등)는 피하세요.
+- 날씨가 맑고 쾌적하면 야외 단계(공원, 야경, 산책)를 적극적으로 포함해도 좋습니다. 날씨 정보가
+  없으면 날씨와 무관하게 구성하세요.
+- 각 단계의 대안은 반드시 후보 목록에 있는 place_id만 사용해야 하고, 같은 place_id를 코스 전체에서
+  두 번 이상 쓰면 안 됩니다.
+- 대안이 정말 부족한 경우가 아니라면 각 단계에 2~3개의 대안을 배정하세요.
+
 응답은 반드시 아래 JSON 형식만 반환하고, 마크다운 코드블록 없이 순수 JSON으로 반환하세요.
 
-{
+{{
   "title": "코스 제목 (20자 이내)",
   "description": "코스 한 줄 소개 (50자 이내)",
-  "places": [
-    {"place_id": <int>, "description": "이 장소 방문 이유/활동 (30자 이내)"}
+  "stages": [
+    {{
+      "stage_label": "단계 이름 (예: 저녁 식사, {_MAX_STAGE_LABEL_LEN}자 이내)",
+      "options": [
+        {{"place_id": <int>, "description": "이 장소를 추천하는 이유/활동 (30자 이내)"}}
+      ]
+    }}
   ]
-}
+}}"""
 
-중요: places 배열에는 반드시 3개 이상의 항목이 있어야 합니다."""
+
+@dataclass
+class StageOption:
+    place_id: int
+    description: str
+
+
+@dataclass
+class GeneratedStage:
+    stage_label: str
+    options: list[StageOption]
 
 
 @dataclass
 class GeneratedCourse:
     title: str
     description: str
-    place_ids: list[int]
-    place_descriptions: dict[int, str]  # place_id → description
+    stages: list[GeneratedStage]
     content_hash: str
+
+    @property
+    def all_place_ids(self) -> list[int]:
+        return [opt.place_id for stage in self.stages for opt in stage.options]
 
 
 class CourseGenerationError(Exception):
     pass
 
 
-def _compute_content_hash(place_ids: list[int]) -> str:
-    return hashlib.sha256(json.dumps(sorted(place_ids)).encode()).hexdigest()
+def _compute_content_hash(stages: list[GeneratedStage]) -> str:
+    structure = [
+        {"label": s.stage_label, "options": sorted(opt.place_id for opt in s.options)}
+        for s in stages
+    ]
+    return hashlib.sha256(json.dumps(structure, sort_keys=True).encode()).hexdigest()
 
 
 def _build_candidate_prompt(
@@ -53,15 +96,22 @@ def _build_candidate_prompt(
     theme_tags: list[str],
     budget_tier: str,
     companion_type: str,
+    weather: dict | None,
 ) -> str:
     lines = [
         f"사용자 요청: {query_text}",
         f"테마: {', '.join(theme_tags)}",
         f"예산: {budget_tier}",
         f"동반자: {companion_type}",
-        "",
-        "후보 장소 목록:",
     ]
+    if weather:
+        lines.append(
+            f"현재 날씨: {weather.get('description', '')} "
+            f"(기온 {weather.get('temp')}°C, {weather.get('main')})"
+        )
+    else:
+        lines.append("현재 날씨: 정보 없음 (날씨와 무관하게 구성하세요)")
+    lines += ["", "후보 장소 목록:"]
     for p in candidates:
         avg_rating = (
             round(p["user_rating_sum"] / 2.0 / p["user_rating_count"], 1)
@@ -81,25 +131,51 @@ def _parse_and_validate(
 ) -> GeneratedCourse | None:
     try:
         data = json.loads(raw.strip())
-        places = data["places"]
-        place_ids = [p["place_id"] for p in places]
+        stages_data = data["stages"]
 
-        # hallucination check
-        invalid = [pid for pid in place_ids if pid not in candidate_ids]
+        if not (_MIN_STAGES <= len(stages_data) <= _MAX_STAGES):
+            logger.warning("Course has %d stages (expected %d-%d)", len(stages_data), _MIN_STAGES, _MAX_STAGES)
+            return None
+
+        stages: list[GeneratedStage] = []
+        all_ids: list[int] = []
+        for sd in stages_data:
+            label = sd["stage_label"]
+            if not label or len(label) > _MAX_STAGE_LABEL_LEN:
+                logger.warning("Invalid stage_label: %r", label)
+                return None
+
+            opts_data = sd["options"]
+            if not (_MIN_OPTIONS_PER_STAGE <= len(opts_data) <= _MAX_OPTIONS_PER_STAGE):
+                logger.warning(
+                    "Stage '%s' has %d options (expected %d-%d)",
+                    label, len(opts_data), _MIN_OPTIONS_PER_STAGE, _MAX_OPTIONS_PER_STAGE,
+                )
+                return None
+
+            options = [
+                StageOption(place_id=o["place_id"], description=o["description"])
+                for o in opts_data
+            ]
+            all_ids.extend(opt.place_id for opt in options)
+            stages.append(GeneratedStage(stage_label=label, options=options))
+
+        # hallucination check — every option's place_id across all stages must
+        # come from the candidate pool
+        invalid = [pid for pid in all_ids if pid not in candidate_ids]
         if invalid:
             logger.warning("Hallucinated place_ids: %s", invalid)
             return None
 
-        if not (2 <= len(place_ids) <= 5):
-            logger.warning("Course has %d places (expected 2-5)", len(place_ids))
+        if len(all_ids) != len(set(all_ids)):
+            logger.warning("Duplicate place_id reused across stages/options")
             return None
 
         return GeneratedCourse(
             title=data["title"],
             description=data["description"],
-            place_ids=place_ids,
-            place_descriptions={p["place_id"]: p["description"] for p in places},
-            content_hash=_compute_content_hash(place_ids),
+            stages=stages,
+            content_hash=_compute_content_hash(stages),
         )
     except (KeyError, ValueError, TypeError) as exc:
         logger.warning("LLM response parse error: %s", exc)
@@ -116,9 +192,9 @@ async def generate_course(
     exclude_place_ids: list[int] | None = None,
     pre_fetched_candidates: list[dict] | None = None,
 ) -> GeneratedCourse | None:
-    """Retrieve candidate places and ask LLM to generate a course.
+    """Retrieve candidate places and ask LLM to design a staged course.
 
-    Returns None if generation fails after 1 retry (raises CourseGenerationError
+    Returns None if generation fails after retries (raises CourseGenerationError
     if no candidates are found at all).
     """
     if pre_fetched_candidates is not None:
@@ -132,7 +208,10 @@ async def generate_course(
         raise CourseGenerationError("NO_CANDIDATES")
 
     candidate_ids = {c["place_id"] for c in candidates}
-    prompt = _build_candidate_prompt(query_text, candidates, theme_tags, budget_tier, companion_type)
+    weather = await fetch_weather()
+    prompt = _build_candidate_prompt(
+        query_text, candidates, theme_tags, budget_tier, companion_type, weather
+    )
     messages = [
         LLMMessage(role="system", content=_SYSTEM_PROMPT),
         LLMMessage(role="user", content=prompt),
@@ -155,7 +234,8 @@ async def generate_course(
         result = _parse_and_validate(response.content, candidate_ids)
         if result:
             logger.info(
-                "Course generated (attempt=%d, hash=%s)", attempt + 1, result.content_hash
+                "Course generated (attempt=%d, hash=%s, stages=%d)",
+                attempt + 1, result.content_hash, len(result.stages),
             )
             return result
         logger.warning("Attempt %d parse failed, retrying...", attempt + 1)
@@ -176,16 +256,19 @@ async def upsert_course(
     candidates: list[dict],
 ) -> int:
     """Persist course via content_hash UPSERT. Returns course_id."""
-    places_json = json.dumps(
-        [
-            {
-                "place_id": pid,
-                "description": course.place_descriptions[pid],
-                "visit_order": idx + 1,
-            }
-            for idx, pid in enumerate(course.place_ids)
-        ]
-    )
+    candidates_by_id = {c["place_id"]: c for c in candidates}
+
+    places_json = json.dumps([
+        {
+            "place_id": opt.place_id,
+            "description": opt.description,
+            "stage_order": s_idx + 1,
+            "option_index": o_idx + 1,
+            "stage_label": stage.stage_label,
+        }
+        for s_idx, stage in enumerate(course.stages)
+        for o_idx, opt in enumerate(stage.options)
+    ])
 
     # asyncpg cannot bind custom PostgreSQL enum/array types via :param placeholders.
     # Inline all enum values as SQL literals; bind only plain scalars.
@@ -219,19 +302,29 @@ async def upsert_course(
         text("DELETE FROM course_places WHERE course_id = :cid"),
         {"cid": course_id},
     )
-    for idx, pid in enumerate(course.place_ids):
-        await session.execute(
-            text("""
-                INSERT INTO course_places (course_id, visit_order, place_id, description)
-                VALUES (:course_id, :visit_order, :place_id, :description)
-            """),
-            {
-                "course_id": course_id,
-                "visit_order": idx + 1,
-                "place_id": pid,
-                "description": course.place_descriptions[pid],
-            },
-        )
+    for s_idx, stage in enumerate(course.stages):
+        for o_idx, opt in enumerate(stage.options):
+            distance_m = candidates_by_id.get(opt.place_id, {}).get("distance_m")
+            distance_km = round(distance_m / 1000, 1) if distance_m is not None else None
+            await session.execute(
+                text("""
+                    INSERT INTO course_places
+                        (course_id, stage_order, option_index, stage_label,
+                         place_id, description, walking_distance_from_station_km)
+                    VALUES
+                        (:course_id, :stage_order, :option_index, :stage_label,
+                         :place_id, :description, :distance_km)
+                """),
+                {
+                    "course_id": course_id,
+                    "stage_order": s_idx + 1,
+                    "option_index": o_idx + 1,
+                    "stage_label": stage.stage_label,
+                    "place_id": opt.place_id,
+                    "description": opt.description,
+                    "distance_km": distance_km,
+                },
+            )
 
     await session.commit()
     return course_id

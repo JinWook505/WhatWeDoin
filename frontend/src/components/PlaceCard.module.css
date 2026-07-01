@@ -14,18 +14,19 @@
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
 }
 
-.orderBadge {
+.distanceBadge {
   flex-shrink: 0;
-  width: 30px;
   height: 30px;
-  border-radius: 50%;
+  padding: 0 10px;
+  border-radius: 15px;
   background: linear-gradient(135deg, #a855f7, #ec4899);
   color: #fff;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
+  white-space: nowrap;
   box-shadow: 0 2px 12px rgba(168, 85, 247, 0.4);
 }
 

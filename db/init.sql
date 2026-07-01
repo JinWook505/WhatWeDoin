@@ -226,16 +226,19 @@ CREATE INDEX idx_places_geom     ON places USING GIST (geom);
 CREATE INDEX idx_places_category ON places (category);
 
 -- ============================================================
--- 6.2.10 course_places — 코스 구성 장소 (동선 순서)
+-- 6.2.10 course_places — 코스 구성 장소 (단계별 복수 대안, D-26/SCRUM-78)
 -- ============================================================
 CREATE TABLE course_places (
-    course_id                   BIGINT NOT NULL REFERENCES courses(course_id) ON DELETE CASCADE,
-    visit_order                 SMALLINT NOT NULL,
-    place_id                    BIGINT NOT NULL REFERENCES places(place_id),
-    description                 TEXT,
-    walking_distance_to_next_km NUMERIC(4,1),
-    created_at                  TIMESTAMPTZ DEFAULT now(),
-    PRIMARY KEY (course_id, visit_order)
+    course_id                         BIGINT NOT NULL REFERENCES courses(course_id) ON DELETE CASCADE,
+    stage_order                       SMALLINT NOT NULL,            -- 몇 번째 단계인지 (1..4)
+    option_index                      SMALLINT NOT NULL DEFAULT 1,  -- 그 단계 내 몇 번째 대안인지 (1..3)
+    stage_label                       VARCHAR(30) NOT NULL,          -- 단계 이름(예: "저녁 식사", "카페/디저트")
+    place_id                          BIGINT NOT NULL REFERENCES places(place_id),
+    description                       TEXT,
+    walking_distance_from_station_km  NUMERIC(4,1),  -- 역→이 장소 도보거리. D-26: 단계별 복수 대안 구조에서는
+                                                       -- "다음 장소까지"가 조합마다 달라져 의미가 없어져 "역에서"로 변경
+    created_at                        TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (course_id, stage_order, option_index)
 );
 CREATE INDEX idx_course_places_place ON course_places (place_id);
 

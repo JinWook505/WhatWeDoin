@@ -40,9 +40,11 @@ export default function PlaceCard({ place, courseId, isExcluded = false, onToggl
   return (
     <>
       <article className={`${styles.card} ${isExcluded ? styles.excluded : ""}`}>
-        <div className={styles.orderBadge} aria-label={`${place.order}번째 장소`}>
-          {place.order}
-        </div>
+        {place.walking_distance_from_station_km != null && (
+          <div className={styles.distanceBadge} aria-label="역에서 도보 거리">
+            🚶 {place.walking_distance_from_station_km.toFixed(1)}km
+          </div>
+        )}
 
         <div className={styles.body}>
           <div className={styles.topRow}>

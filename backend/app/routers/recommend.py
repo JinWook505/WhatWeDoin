@@ -5,13 +5,11 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.db import get_db as get_session
 from app.core.deps import get_current_user_optional, require_current_user
 from app.services.cache_ratelimit import (
@@ -37,6 +35,7 @@ from app.services.course_generator import (
 )
 from app.services.llm.base import LLMUnavailableError
 from app.services.place_search import search_candidate_places
+from app.services.weather import fetch_weather as _fetch_weather
 
 logger = logging.getLogger(__name__)
 
@@ -143,31 +142,6 @@ def _time_based_placeholders() -> list[str]:
     return ["예: 친구들이랑 홍대에서 밤에 놀 수 있는 코스 짜줘"]
 
 
-async def _fetch_weather() -> dict | None:
-    """Fetch Seoul weather from OpenWeatherMap. Returns None on any failure."""
-    api_key = settings.OPENWEATHER_API_KEY
-    if not api_key:
-        return None
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(
-                "https://api.openweathermap.org/data/2.5/weather",
-                params={"q": "Seoul,KR", "appid": api_key, "units": "metric", "lang": "kr"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return {
-                "temp": round(data["main"]["temp"], 1),
-                "feels_like": round(data["main"]["feels_like"], 1),
-                "description": data["weather"][0]["description"],
-                "main": data["weather"][0]["main"],
-                "icon": data["weather"][0]["icon"],
-            }
-    except Exception as exc:
-        logger.warning("Weather API failed: %s", exc)
-        return None
-
-
 class RecommendRequest(BaseModel):
     station_id: int | None = None
     query: str
@@ -176,7 +150,6 @@ class RecommendRequest(BaseModel):
 
 
 class PlaceDetail(BaseModel):
-    order: int
     place_id: int
     name: str
     category: str | None = None
@@ -188,6 +161,13 @@ class PlaceDetail(BaseModel):
     map_url: str | None = None
     thumbnail_url: str | None = None
     description: str = ""
+    walking_distance_from_station_km: float | None = None
+
+
+class StageDetail(BaseModel):
+    stage_order: int
+    stage_label: str
+    options: list[PlaceDetail]
 
 
 class CourseResponse(BaseModel):
@@ -196,8 +176,7 @@ class CourseResponse(BaseModel):
     description: str
     station_name: str | None = None
     theme_tags: list[str]
-    places: list[PlaceDetail]
-    total_walking_distance_km: float | None = None
+    stages: list[StageDetail]
     similar_top_courses: list[dict] = []
     served_from: str = "LLM"
 
@@ -389,28 +368,36 @@ async def recommend(
     )
 
     # 9. Build response
-    place_map = await _fetch_place_map(session, course.place_ids)
-    places_out: list[PlaceDetail] = []
-    for idx, pid in enumerate(course.place_ids):
-        p = place_map.get(pid, {})
-        rc = p.get("user_rating_count") or 0
-        rs = p.get("user_rating_sum") or 0
-        avg_rating = round(rs / 2.0 / rc, 1) if rc > 0 else None
-        places_out.append(
-            PlaceDetail(
-                order=idx + 1,
-                place_id=pid,
-                name=p.get("name", ""),
-                category=place_category_label(p.get("category")),
-                address=p.get("address"),
-                business_hours=p.get("business_hours"),
-                price_range=p.get("price_range"),
-                user_rating_avg=avg_rating,
-                user_rating_count=rc,
-                map_url=p.get("map_url"),
-                thumbnail_url=p.get("thumbnail_url"),
-                description=course.place_descriptions.get(pid, ""),
+    candidates_by_id = {c["place_id"]: c for c in candidates}
+    stages_out: list[StageDetail] = []
+    for s_idx, stage in enumerate(course.stages):
+        options_out: list[PlaceDetail] = []
+        for opt in stage.options:
+            p = candidates_by_id.get(opt.place_id, {})
+            rc = p.get("user_rating_count") or 0
+            rs = p.get("user_rating_sum") or 0
+            avg_rating = round(rs / 2.0 / rc, 1) if rc > 0 else None
+            distance_m = p.get("distance_m")
+            options_out.append(
+                PlaceDetail(
+                    place_id=opt.place_id,
+                    name=p.get("name", ""),
+                    category=place_category_label(p.get("category")),
+                    address=p.get("address"),
+                    business_hours=p.get("business_hours"),
+                    price_range=p.get("price_range"),
+                    user_rating_avg=avg_rating,
+                    user_rating_count=rc,
+                    map_url=p.get("map_url"),
+                    thumbnail_url=p.get("thumbnail_url"),
+                    description=opt.description,
+                    walking_distance_from_station_km=(
+                        round(distance_m / 1000, 1) if distance_m is not None else None
+                    ),
+                )
             )
+        stages_out.append(
+            StageDetail(stage_order=s_idx + 1, stage_label=stage.stage_label, options=options_out)
         )
 
     response_data = CourseResponse(
@@ -419,8 +406,7 @@ async def recommend(
         description=course.description,
         station_name=station_name_resolved or classification.station_name,
         theme_tags=theme_tags,
-        places=places_out,
-        total_walking_distance_km=None,
+        stages=stages_out,
         similar_top_courses=[],
         served_from="LLM",
     ).model_dump()
@@ -466,25 +452,30 @@ async def _build_response_from_course_id(
     place_rows = (
         await session.execute(
             text("""
-                SELECT cp.visit_order, p.place_id, p.name, p.category, p.address,
+                SELECT cp.stage_order, cp.option_index, cp.stage_label,
+                       cp.walking_distance_from_station_km,
+                       p.place_id, p.name, p.category, p.address,
                        p.business_hours, p.price_range, p.user_rating_sum,
                        p.user_rating_count, p.map_url, p.thumbnail_url,
                        cp.description
                 FROM course_places cp
                 JOIN places p ON p.place_id = cp.place_id
                 WHERE cp.course_id = :cid
-                ORDER BY cp.visit_order
+                ORDER BY cp.stage_order, cp.option_index
             """),
             {"cid": course_id},
         )
     ).mappings().all()
 
-    places_out = []
+    stages_by_order: dict[int, dict] = {}
     for p in place_rows:
         rc = p["user_rating_count"] or 0
         rs = p["user_rating_sum"] or 0
-        places_out.append({
-            "order": p["visit_order"],
+        dist = p["walking_distance_from_station_km"]
+        stage = stages_by_order.setdefault(
+            p["stage_order"], {"stage_order": p["stage_order"], "stage_label": p["stage_label"], "options": []}
+        )
+        stage["options"].append({
             "place_id": p["place_id"],
             "name": p["name"],
             "category": place_category_label(p["category"]),
@@ -496,7 +487,9 @@ async def _build_response_from_course_id(
             "map_url": p["map_url"],
             "thumbnail_url": p["thumbnail_url"],
             "description": p["description"] or "",
+            "walking_distance_from_station_km": float(dist) if dist is not None else None,
         })
+    stages_out = [stages_by_order[k] for k in sorted(stages_by_order)]
 
     return {
         "course_id": course_id,
@@ -504,8 +497,7 @@ async def _build_response_from_course_id(
         "description": "",
         "station_name": course_row["station_name"],
         "theme_tags": list(course_row["theme_tags"] or []),
-        "places": places_out,
-        "total_walking_distance_km": None,
+        "stages": stages_out,
         "similar_top_courses": [],
         "served_from": served_from,
     }
@@ -535,22 +527,6 @@ async def _resolve_station(session: AsyncSession, raw_name: str) -> dict | None:
     return None
 
 
-async def _fetch_place_map(session: AsyncSession, place_ids: list[int]) -> dict[int, dict]:
-    if not place_ids:
-        return {}
-    result = await session.execute(
-        text("""
-            SELECT place_id, name, category, address, business_hours,
-                   price_range, user_rating_sum, user_rating_count,
-                   map_url, thumbnail_url
-            FROM places
-            WHERE place_id = ANY(:ids)
-        """),
-        {"ids": place_ids},
-    )
-    return {row["place_id"]: dict(row) for row in result.mappings().all()}
-
-
 async def _fetch_fallback_courses(
     session: AsyncSession,
     station_id: int,
@@ -565,10 +541,10 @@ async def _fetch_fallback_courses(
                     SELECT c.course_id, c.theme_tags, c.bayesian_score, c.rating_count,
                            s.name AS station_name,
                            (
-                               SELECT COALESCE(json_agg(p.name ORDER BY cp.visit_order), '[]'::json)
+                               SELECT COALESCE(json_agg(p.name ORDER BY cp.stage_order), '[]'::json)
                                FROM course_places cp
                                JOIN places p ON p.place_id = cp.place_id
-                               WHERE cp.course_id = c.course_id
+                               WHERE cp.course_id = c.course_id AND cp.option_index = 1
                            ) AS preview_places
                     FROM courses c
                     LEFT JOIN stations s ON s.station_id = c.station_id

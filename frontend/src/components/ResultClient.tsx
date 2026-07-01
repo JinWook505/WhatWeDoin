@@ -77,15 +77,10 @@ export default function ResultClient({ initialData, query, dailyRemaining: initi
         )}
         <h1 className={styles.title}>{data.title}</h1>
         {data.description && <p className={styles.desc}>{data.description}</p>}
-        {data.total_walking_distance_km != null && (
-          <p className={styles.distance}>
-            도보 총 {data.total_walking_distance_km.toFixed(1)} km
-          </p>
-        )}
       </header>
 
       <CourseTimeline
-        places={data.places}
+        stages={data.stages}
         courseId={data.course_id}
         excludedIds={excludedIds}
         onToggleExclude={toggleExclude}

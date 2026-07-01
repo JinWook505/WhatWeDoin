@@ -44,10 +44,12 @@ class CoursePlaces(Base):
     __tablename__ = "course_places"
 
     course_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("courses.course_id"), primary_key=True)
-    visit_order: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    stage_order: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    option_index: Mapped[int] = mapped_column(SmallInteger, primary_key=True, server_default=text("1"))
+    stage_label: Mapped[str] = mapped_column(String(30), nullable=False)
     place_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("places.place_id"), nullable=False)
     description: Mapped[str | None] = mapped_column(String)
-    walking_distance_to_next_km: Mapped[float | None] = mapped_column(Numeric(4, 1))
+    walking_distance_from_station_km: Mapped[float | None] = mapped_column(Numeric(4, 1))
     created_at: Mapped[str | None] = mapped_column(
         TIMESTAMP(timezone=True), server_default=text("now()")
     )

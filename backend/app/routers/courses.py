@@ -137,10 +137,10 @@ async def list_courses(
             c.total_walking_distance_km,
             c.created_at,
             (
-                SELECT COALESCE(json_agg(p.name ORDER BY cp.visit_order), '[]'::json)
+                SELECT COALESCE(json_agg(p.name ORDER BY cp.stage_order), '[]'::json)
                 FROM course_places cp
                 JOIN places p ON p.place_id = cp.place_id
-                WHERE cp.course_id = c.course_id
+                WHERE cp.course_id = c.course_id AND cp.option_index = 1
             ) AS preview_places
         FROM courses c
         LEFT JOIN stations s ON s.station_id = c.station_id
@@ -228,13 +228,14 @@ async def get_course(
             detail={"code": "NOT_FOUND", "message": "코스를 찾을 수 없어요."},
         )
 
-    # Places (ordered by visit_order)
+    # Places (grouped by stage_order, ordered by option_index within a stage)
     place_rows = (
         await db.execute(
             text("""
                 SELECT
-                    cp.visit_order, cp.place_id, cp.description,
-                    cp.walking_distance_to_next_km,
+                    cp.stage_order, cp.option_index, cp.stage_label,
+                    cp.place_id, cp.description,
+                    cp.walking_distance_from_station_km,
                     p.name, p.category, p.address, p.lat, p.lng,
                     p.price_range, p.business_hours, p.map_url,
                     p.user_rating_sum, p.user_rating_count,
@@ -242,7 +243,7 @@ async def get_course(
                 FROM course_places cp
                 JOIN places p ON p.place_id = cp.place_id
                 WHERE cp.course_id = :cid
-                ORDER BY cp.visit_order
+                ORDER BY cp.stage_order, cp.option_index
             """),
             {"cid": course_id},
         )
@@ -251,7 +252,8 @@ async def get_course(
     now = datetime.now(timezone.utc)
     is_stale = False
     has_closed = False
-    places_out = []
+    stages_by_order: dict[int, dict] = {}
+    first_option_names: list[str] = []
 
     for p in place_rows:
         # Freshness check
@@ -278,8 +280,12 @@ async def get_course(
             except Exception:
                 business_hours = None
 
-        places_out.append({
-            "order": p["visit_order"],
+        dist = p["walking_distance_from_station_km"]
+        stage = stages_by_order.setdefault(
+            p["stage_order"],
+            {"stage_order": p["stage_order"], "stage_label": p["stage_label"], "options": []},
+        )
+        stage["options"].append({
             "place_id": p["place_id"],
             "name": p["name"],
             "category": place_category_label(p["category"]),
@@ -293,12 +299,12 @@ async def get_course(
             "user_rating_count": rc,
             "status": p["status"],
             "description": p["description"] or "",
-            "walking_distance_to_next_km": (
-                float(p["walking_distance_to_next_km"])
-                if p["walking_distance_to_next_km"] is not None
-                else None
-            ),
+            "walking_distance_from_station_km": float(dist) if dist is not None else None,
         })
+        if p["option_index"] == 1:
+            first_option_names.append(p["name"])
+
+    stages_out = [stages_by_order[k] for k in sorted(stages_by_order)]
 
     # Review summary
     n = course_row["rating_count"] or 0
@@ -308,14 +314,11 @@ async def get_course(
 
     # OG tags
     theme_str = " + ".join(_THEME_TAG_KO.get(t, t) for t in list(course_row["theme_tags"] or [])[:3])
-    preview_names = " → ".join(p["name"] for p in places_out[:3])
+    preview_names = " → ".join(first_option_names[:3])
     station_name = course_row["station_name"] or f"역{course_row['station_id']}"
-    dist = course_row["total_walking_distance_km"]
 
     og_title = f"{station_name}역 | {theme_str} 코스"
     og_desc_parts = [preview_names]
-    if dist:
-        og_desc_parts.append(f"도보 {float(dist):.1f}km")
     if avg_score:
         og_desc_parts.append(f"★ {avg_score}점")
     og_description = " · ".join(og_desc_parts)
@@ -330,10 +333,7 @@ async def get_course(
             "budget_tier": course_row["budget_tier"],
             "companion_type": course_row["companion_type"],
             "head_count": course_row["head_count"],
-            "places": places_out,
-            "total_walking_distance_km": (
-                float(dist) if dist is not None else None
-            ),
+            "stages": stages_out,
             "bayesian_score": bayesian,
             "avg_score": avg_score,
             "rating_count": n,
