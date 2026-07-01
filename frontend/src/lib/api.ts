@@ -128,6 +128,68 @@ export interface CourseListResponse {
   next_cursor: string | null
 }
 
+export interface ReviewItem {
+  review_id: number
+  score: number
+  comment: string | null
+  links: string[]
+  is_mine: boolean
+  created_at: string | null
+}
+
+export interface ReviewsResponse {
+  summary: {
+    bayesian_score: number
+    avg_score: number | null
+    rating_count: number
+  }
+  reviews: ReviewItem[]
+  next_cursor: string | null
+}
+
+export async function getReviews(courseId: number, cursor?: string): Promise<ReviewsResponse> {
+  const url = new URL(`${API_URL}/v1/courses/${courseId}/reviews`)
+  if (cursor) url.searchParams.set("cursor", cursor)
+  const res = await fetch(url.toString(), { cache: "no-store" })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new ApiError(body?.detail?.message ?? `HTTP ${res.status}`, res.status)
+  }
+  const json = await res.json()
+  return json.data as ReviewsResponse
+}
+
+export async function upsertReview(
+  courseId: number,
+  body: { score: number; comment?: string; links?: string[] },
+): Promise<void> {
+  const token = typeof window !== "undefined" ? getAccessToken() : null
+  const res = await fetch(`${API_URL}/v1/courses/${courseId}/reviews`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}))
+    throw new ApiError(b?.detail?.message ?? `HTTP ${res.status}`, res.status)
+  }
+}
+
+export async function deleteMyReview(courseId: number): Promise<void> {
+  const token = typeof window !== "undefined" ? getAccessToken() : null
+  const res = await fetch(`${API_URL}/v1/courses/${courseId}/reviews/me`, {
+    method: "DELETE",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}))
+    throw new ApiError(b?.detail?.message ?? `HTTP ${res.status}`, res.status)
+  }
+}
+
 export async function getCourses(params: {
   theme?: string[]
   companion_type?: string

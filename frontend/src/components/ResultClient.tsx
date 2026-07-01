@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react"
 import { recommend, CourseData } from "@/lib/api"
 import CourseTimeline from "./CourseTimeline"
+import ReviewSection from "./ReviewSection"
 import styles from "./ResultClient.module.css"
 
 interface Props {
@@ -105,6 +106,8 @@ export default function ResultClient({ initialData, query }: Props) {
           </div>
         </div>
       )}
+
+      <ReviewSection courseId={data.course_id} />
 
       {data.similar_top_courses.length > 0 && (
         <section className={styles.similar}>
