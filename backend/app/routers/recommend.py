@@ -2,13 +2,21 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db as get_session
 from app.core.deps import require_current_user
+from app.services.cache_ratelimit import (
+    check_daily_quota,
+    get_course_cache,
+    get_idempotency_result,
+    make_cache_key,
+    record_request,
+    set_course_cache,
+)
 from app.services.classifier import InvalidQueryError, classify_query
 from app.services.course_generator import (
     CourseGenerationError,
@@ -56,10 +64,33 @@ class CourseResponse(BaseModel):
 @router.post("/recommend")
 async def recommend(
     req: RecommendRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     current_user: dict = Depends(require_current_user),
 ):
-    # 1. Classify
+    user_id: int = current_user["id"]
+    idempotency_key = request.headers.get("X-Idempotency-Key")
+
+    # 1. Idempotency check — return previous result if same key used
+    if idempotency_key:
+        cached_course_id = await get_idempotency_result(session, user_id, idempotency_key)
+        if cached_course_id is not None:
+            cached = await _build_response_from_course_id(session, cached_course_id, served_from="CACHE")
+            if cached:
+                return {"success": True, "data": cached, "error": None}
+
+    # 2. Daily quota check (only LLM calls count)
+    allowed = await check_daily_quota(session, user_id)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "QUOTA_EXCEEDED",
+                "message": "오늘 추천 횟수(3회)를 모두 사용했어요. KST 자정에 초기화됩니다.",
+            },
+        )
+
+    # 3. Classify
     try:
         classification = await classify_query(req.query)
     except InvalidQueryError as e:
@@ -80,7 +111,7 @@ async def recommend(
         else "COUPLE"
     )
 
-    # 1b. Resolve station_id — from request body or classifier-extracted name
+    # 4. Resolve station
     station_id = req.station_id
     station_name_resolved: str | None = classification.station_name
     if station_id is None:
@@ -98,7 +129,25 @@ async def recommend(
         station_id = station_row["station_id"]
         station_name_resolved = station_row["name"]
 
-    # 2. Fetch candidates (shared between generate + upsert)
+    # 5. Cache check (skip if exclude_place_ids specified — different context)
+    cache_key = make_cache_key(station_id, req.query)
+    if not req.exclude_place_ids:
+        cache_hit = await get_course_cache(session, cache_key)
+        if cache_hit:
+            await record_request(
+                session,
+                user_id=user_id,
+                station_id=station_id,
+                query_text=req.query,
+                served_from="CACHE",
+                course_id=cache_hit.get("course_id"),
+                idempotency_key=idempotency_key,
+            )
+            await session.commit()
+            cache_hit["served_from"] = "CACHE"
+            return {"success": True, "data": cache_hit, "error": None}
+
+    # 6. Fetch candidates
     candidates = await search_candidate_places(
         session,
         station_id,
@@ -111,7 +160,7 @@ async def recommend(
             detail={"code": "NO_CANDIDATES", "message": "No places found near this station"},
         )
 
-    # 3. Generate course (skip internal candidate re-fetch via pre_fetched_candidates)
+    # 7. Generate
     try:
         course = await generate_course(
             session=session,
@@ -135,7 +184,7 @@ async def recommend(
             detail={"code": "GENERATION_FAILED", "message": "LLM failed to generate a valid course"},
         )
 
-    # 4. Persist
+    # 8. Persist
     course_id = await upsert_course(
         session=session,
         station_id=station_id,
@@ -147,9 +196,8 @@ async def recommend(
         candidates=candidates,
     )
 
-    # 5. Fetch place details for response
+    # 9. Build response
     place_map = await _fetch_place_map(session, course.place_ids)
-
     places_out: list[PlaceDetail] = []
     for idx, pid in enumerate(course.place_ids):
         p = place_map.get(pid, {})
@@ -173,38 +221,111 @@ async def recommend(
             )
         )
 
+    response_data = CourseResponse(
+        course_id=course_id,
+        title=course.title,
+        description=course.description,
+        station_name=station_name_resolved or classification.station_name,
+        theme_tags=theme_tags,
+        places=places_out,
+        total_walking_distance_km=None,
+        similar_top_courses=[],
+        served_from="LLM",
+    ).model_dump()
+
+    # 10. Store cache + record request
+    if not req.exclude_place_ids:
+        await set_course_cache(session, cache_key, response_data)
+    await record_request(
+        session,
+        user_id=user_id,
+        station_id=station_id,
+        query_text=req.query,
+        served_from="LLM",
+        course_id=course_id,
+        idempotency_key=idempotency_key,
+    )
+    await session.commit()
+
+    return {"success": True, "data": response_data, "error": None}
+
+
+async def _build_response_from_course_id(
+    session: AsyncSession,
+    course_id: int,
+    served_from: str = "CACHE",
+) -> dict | None:
+    """Reconstruct a response dict from a persisted course_id."""
+    course_row = (
+        await session.execute(
+            text("""
+                SELECT c.course_id, c.theme_tags, c.station_id,
+                       s.name AS station_name
+                FROM courses c
+                LEFT JOIN stations s ON s.station_id = c.station_id
+                WHERE c.course_id = :cid
+            """),
+            {"cid": course_id},
+        )
+    ).mappings().first()
+    if not course_row:
+        return None
+
+    place_rows = (
+        await session.execute(
+            text("""
+                SELECT cp.visit_order, p.place_id, p.name, p.category, p.address,
+                       p.business_hours, p.price_range, p.user_rating_sum,
+                       p.user_rating_count, p.map_url, p.thumbnail_url,
+                       cp.description
+                FROM course_places cp
+                JOIN places p ON p.place_id = cp.place_id
+                WHERE cp.course_id = :cid
+                ORDER BY cp.visit_order
+            """),
+            {"cid": course_id},
+        )
+    ).mappings().all()
+
+    places_out = []
+    for p in place_rows:
+        rc = p["user_rating_count"] or 0
+        rs = p["user_rating_sum"] or 0
+        places_out.append({
+            "order": p["visit_order"],
+            "place_id": p["place_id"],
+            "name": p["name"],
+            "category": p["category"],
+            "address": p["address"],
+            "business_hours": p["business_hours"],
+            "price_range": p["price_range"],
+            "user_rating_avg": round(rs / 2.0 / rc, 1) if rc > 0 else None,
+            "user_rating_count": rc,
+            "map_url": p["map_url"],
+            "thumbnail_url": p["thumbnail_url"],
+            "description": p["description"] or "",
+        })
+
     return {
-        "success": True,
-        "data": CourseResponse(
-            course_id=course_id,
-            title=course.title,
-            description=course.description,
-            station_name=station_name_resolved or classification.station_name,
-            theme_tags=theme_tags,
-            places=places_out,
-            total_walking_distance_km=None,
-            similar_top_courses=[],
-            served_from="LLM",
-        ).model_dump(),
-        "error": None,
+        "course_id": course_id,
+        "title": "",
+        "description": "",
+        "station_name": course_row["station_name"],
+        "theme_tags": list(course_row["theme_tags"] or []),
+        "places": places_out,
+        "total_walking_distance_km": None,
+        "similar_top_courses": [],
+        "served_from": served_from,
     }
 
 
 async def _resolve_station(session: AsyncSession, raw_name: str) -> dict | None:
-    """Try progressively looser matches to find a station by name.
-
-    1. Exact match
-    2. After stripping trailing '역'
-    3. LIKE %name% (partial)
-    4. LIKE %normalized% (partial, '역' stripped)
-    """
     normalized = raw_name.rstrip("역").strip()
-
     for name, sql in [
-        (raw_name,    "SELECT station_id, name FROM stations WHERE name = :name LIMIT 1"),
-        (normalized,  "SELECT station_id, name FROM stations WHERE name = :name LIMIT 1"),
-        (raw_name,    "SELECT station_id, name FROM stations WHERE name LIKE :name LIMIT 1"),
-        (normalized,  "SELECT station_id, name FROM stations WHERE name LIKE :name LIMIT 1"),
+        (raw_name,   "SELECT station_id, name FROM stations WHERE name = :name LIMIT 1"),
+        (normalized, "SELECT station_id, name FROM stations WHERE name = :name LIMIT 1"),
+        (raw_name,   "SELECT station_id, name FROM stations WHERE name LIKE :name LIMIT 1"),
+        (normalized, "SELECT station_id, name FROM stations WHERE name LIKE :name LIMIT 1"),
     ]:
         query = name if "LIKE" not in sql else f"%{name}%"
         row = (await session.execute(text(sql), {"name": query})).mappings().first()

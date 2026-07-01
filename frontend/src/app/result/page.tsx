@@ -1,5 +1,6 @@
 import { recommend, ApiError } from "@/lib/api"
 import ResultClient from "@/components/ResultClient"
+import ErrorFallback from "@/components/ErrorFallback"
 import styles from "./page.module.css"
 
 interface Props {
@@ -41,33 +42,13 @@ export default async function ResultPage({ searchParams }: Props) {
     }
   }
 
-  if (errorStatus === 429) {
+  if (errorStatus > 0 || !data) {
     return (
-      <div className={styles.centered}>
-        <p className={styles.limitTitle}>오늘 추천 한도를 모두 사용했어요</p>
-        <p className={styles.limitSub}>KST 자정에 초기화됩니다. 내일 다시 이용해주세요.</p>
-        <a href="/" className={styles.back}>← 홈으로</a>
-      </div>
-    )
-  }
-
-  if (errorCode === "INVALID_QUERY") {
-    return (
-      <div className={styles.centered}>
-        <p className={styles.limitTitle}>질문을 조금 더 구체적으로 써줘요</p>
-        <p className={styles.limitSub}>{errorMessage ?? "지하철역 이름과 어떻게 놀고 싶은지를 포함해주세요."}</p>
-        <a href="/" className={styles.back}>← 다시 쓰기</a>
-      </div>
-    )
-  }
-
-  if (errorMessage || !data) {
-    return (
-      <div className={styles.centered}>
-        <p>코스 생성 중 오류가 발생했습니다.</p>
-        <p className={styles.errorDetail}>{errorMessage}</p>
-        <a href="/" className={styles.back}>← 다시 시도</a>
-      </div>
+      <ErrorFallback
+        status={errorStatus || undefined}
+        code={errorCode}
+        message={errorMessage ?? undefined}
+      />
     )
   }
 

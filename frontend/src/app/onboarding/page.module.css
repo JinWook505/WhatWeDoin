@@ -1,0 +1,204 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background);
+  padding: 24px;
+}
+
+.card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 20px;
+  padding: 36px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  transition: background 0.2s;
+}
+
+.dotActive {
+  background: var(--neon-purple);
+  box-shadow: 0 0 8px rgba(168, 85, 247, 0.5);
+}
+
+.line {
+  flex: 1;
+  max-width: 60px;
+  height: 2px;
+  background: var(--border-strong);
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.8px;
+  margin: 0;
+  color: var(--foreground);
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--foreground-muted);
+  margin: -12px 0 0;
+  line-height: 1.5;
+}
+
+.checkGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--foreground);
+}
+
+.checkAll {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.divider {
+  height: 1px;
+  background: var(--border);
+}
+
+.primaryBtn {
+  width: 100%;
+  padding: 16px;
+  background: var(--gradient-neon);
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.primaryBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--glow-btn);
+}
+
+.primaryBtn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionLabel {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--foreground-muted);
+  margin: 0;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  padding: 7px 14px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border-strong);
+  background: transparent;
+  color: var(--foreground-muted);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.chip:hover {
+  border-color: var(--neon-purple);
+  color: var(--foreground);
+}
+
+.chipActive {
+  border-color: var(--neon-purple);
+  background: rgba(168, 85, 247, 0.12);
+  color: #a855f7;
+}
+
+.radioGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.radioRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skipBtn {
+  background: none;
+  border: none;
+  font-size: 13px;
+  color: var(--foreground-muted);
+  cursor: pointer;
+  text-align: center;
+  padding: 8px;
+  font-family: inherit;
+  transition: color 0.15s;
+}
+
+.skipBtn:hover {
+  color: var(--foreground);
+}
+
+@media (max-width: 480px) {
+  .card {
+    padding: 28px 20px;
+  }
+}

@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { clearTokens, getAccessToken, isLoggedIn, logout } from "@/lib/auth"
+import DeleteAccountModal from "./DeleteAccountModal"
 import styles from "./LoginButton.module.css"
 
 const KAKAO_CLIENT_ID = process.env.NEXT_PUBLIC_KAKAO_CLIENT_ID ?? ""
@@ -22,11 +23,24 @@ function getKakaoNickname(): string | null {
 export default function LoginButton() {
   const [loggedIn, setLoggedIn] = useState(false)
   const [nickname, setNickname] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setLoggedIn(isLoggedIn())
     setNickname(getKakaoNickname())
   }, [])
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    if (menuOpen) document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [menuOpen])
 
   function handleLogin() {
     const params = new URLSearchParams({
@@ -42,16 +56,37 @@ export default function LoginButton() {
     clearTokens()
     setLoggedIn(false)
     setNickname(null)
+    setMenuOpen(false)
   }
 
   if (loggedIn) {
     return (
-      <div className={styles.userRow}>
-        {nickname && <span className={styles.nickname}>{nickname}</span>}
-        <button className={styles.logoutBtn} onClick={handleLogout}>
-          로그아웃
-        </button>
-      </div>
+      <>
+        <div className={styles.userMenu} ref={menuRef}>
+          <button className={styles.nicknameBtn} onClick={() => setMenuOpen((o) => !o)}>
+            {nickname ?? "내 계정"}
+            <span className={styles.chevron}>{menuOpen ? "▲" : "▼"}</span>
+          </button>
+          {menuOpen && (
+            <div className={styles.dropdown}>
+              <button className={styles.dropdownItem} onClick={handleLogout}>
+                로그아웃
+              </button>
+              <button
+                className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}
+                onClick={() => { setMenuOpen(false); setShowDeleteModal(true) }}
+              >
+                회원 탈퇴
+              </button>
+            </div>
+          )}
+        </div>
+
+        <DeleteAccountModal
+          isOpen={showDeleteModal}
+          onClose={() => setShowDeleteModal(false)}
+        />
+      </>
     )
   }
 
