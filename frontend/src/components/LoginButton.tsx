@@ -91,9 +91,8 @@ export default function LoginButton() {
   }
 
   return (
-    <button className={styles.kakaoBtn} onClick={handleLogin}>
+    <button className={styles.kakaoBtn} onClick={handleLogin} aria-label="카카오 로그인">
       <KakaoIcon />
-      카카오로 시작
     </button>
   )
 }
