@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import logging
@@ -7,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.llm import LLMMessage, get_llm_provider
+from app.services.llm.base import LLMUnavailableError
 from app.services.place_search import search_candidate_places
 
 logger = logging.getLogger(__name__)
@@ -138,16 +140,28 @@ async def generate_course(
 
     provider = get_llm_provider()
 
-    for attempt in range(2):
-        response = await provider.chat(messages)
+    last_unavailable: LLMUnavailableError | None = None
+    for attempt in range(3):
+        try:
+            response = await provider.chat(messages)
+        except LLMUnavailableError as exc:
+            last_unavailable = exc
+            wait = 0.5 * (2 ** attempt)  # 0.5s, 1s, 2s
+            logger.warning("LLM unavailable (attempt=%d), retrying in %.1fs: %s", attempt + 1, wait, exc)
+            if attempt < 2:
+                await asyncio.sleep(wait)
+            continue
+
         result = _parse_and_validate(response.content, candidate_ids)
         if result:
             logger.info(
                 "Course generated (attempt=%d, hash=%s)", attempt + 1, result.content_hash
             )
             return result
-        logger.warning("Attempt %d failed, retrying...", attempt + 1)
+        logger.warning("Attempt %d parse failed, retrying...", attempt + 1)
 
+    if last_unavailable is not None:
+        raise last_unavailable
     return None
 
 
