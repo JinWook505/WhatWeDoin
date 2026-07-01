@@ -6,6 +6,7 @@ import styles from "./page.module.css"
 import LoginButton from "@/components/LoginButton"
 import LoginGateModal from "@/components/LoginGateModal"
 import StationSearch from "@/components/StationSearch"
+import KakaoMap from "@/components/KakaoMap"
 import QuotaBadge, { getRemainingCount } from "@/components/QuotaBadge"
 import { useDynamicPlaceholder } from "@/hooks/useDynamicPlaceholder"
 import { getAccessToken, isLoggedIn } from "@/lib/auth"
@@ -17,6 +18,7 @@ export default function Home() {
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [showLoginGate, setShowLoginGate] = useState(false)
+  const [showMap, setShowMap] = useState(false)
 
   const placeholder = useDynamicPlaceholder(query.length > 0)
 
@@ -57,10 +59,27 @@ export default function Home() {
 
         <form className={styles.form} onSubmit={handleSubmit} noValidate>
           <div className={styles.field}>
-            <label className={styles.label}>
-              어느 역에서 놀 거야?
-            </label>
-            <StationSearch selected={station} onSelect={setStation} />
+            <div className={styles.stationFieldHeader}>
+              <label className={styles.label}>
+                어느 역에서 놀 거야?
+              </label>
+              <button
+                type="button"
+                className={styles.mapToggle}
+                onClick={() => setShowMap((v) => !v)}
+              >
+                {showMap ? "🔍 검색으로" : "🗺️ 지도로"}
+              </button>
+            </div>
+            {showMap ? (
+              <KakaoMap
+                selectedStation={station}
+                onStationSelect={(s) => { setStation(s); setShowMap(false) }}
+                height="260px"
+              />
+            ) : (
+              <StationSearch selected={station} onSelect={setStation} />
+            )}
           </div>
 
           <div className={styles.field}>
