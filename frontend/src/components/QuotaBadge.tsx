@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { isLoggedIn } from "@/lib/auth"
+import { isLoggedIn, onAuthChange } from "@/lib/auth"
 import { getRemainingCount } from "@/lib/quota"
 import styles from "./QuotaBadge.module.css"
 
@@ -14,12 +14,16 @@ export default function QuotaBadge({ remaining: overrideRemaining }: QuotaBadgeP
   const [loggedIn, setLoggedIn] = useState(false)
 
   useEffect(() => {
-    setLoggedIn(isLoggedIn())
-    if (overrideRemaining != null) {
-      setRemaining(overrideRemaining)
-    } else {
-      setRemaining(getRemainingCount())
+    const sync = () => {
+      setLoggedIn(isLoggedIn())
+      if (overrideRemaining != null) {
+        setRemaining(overrideRemaining)
+      } else {
+        setRemaining(getRemainingCount())
+      }
     }
+    sync()
+    return onAuthChange(sync)
   }, [overrideRemaining])
 
   if (!loggedIn) {

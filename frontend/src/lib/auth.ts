@@ -1,5 +1,3 @@
-import { resetUsedCount } from "@/lib/quota"
-
 const API_URL =
   typeof window === "undefined"
     ? (process.env.INTERNAL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://backend:8080")
@@ -7,6 +5,19 @@ const API_URL =
 
 export const ACCESS_TOKEN_KEY = "wwd_access"
 export const REFRESH_TOKEN_KEY = "wwd_refresh"
+
+const AUTH_CHANGE_EVENT = "wwd-auth-change"
+
+function notifyAuthChange(): void {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(new Event(AUTH_CHANGE_EVENT))
+}
+
+export function onAuthChange(callback: () => void): () => void {
+  if (typeof window === "undefined") return () => {}
+  window.addEventListener(AUTH_CHANGE_EVENT, callback)
+  return () => window.removeEventListener(AUTH_CHANGE_EVENT, callback)
+}
 
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") return null
@@ -22,12 +33,14 @@ export function setTokens(access: string, refresh: string): void {
   if (typeof window === "undefined") return
   localStorage.setItem(ACCESS_TOKEN_KEY, access)
   localStorage.setItem(REFRESH_TOKEN_KEY, refresh)
+  notifyAuthChange()
 }
 
 export function clearTokens(): void {
   if (typeof window === "undefined") return
   localStorage.removeItem(ACCESS_TOKEN_KEY)
   localStorage.removeItem(REFRESH_TOKEN_KEY)
+  notifyAuthChange()
 }
 
 export function isLoggedIn(): boolean {
@@ -104,5 +117,4 @@ export async function logout(): Promise<void> {
     }
   }
   clearTokens()
-  resetUsedCount()
 }
