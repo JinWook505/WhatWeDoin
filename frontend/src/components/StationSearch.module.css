@@ -1,0 +1,170 @@
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.container {
+  position: relative;
+  width: 100%;
+}
+
+.inputWrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+
+.inputWrapper:focus-within {
+  border-color: var(--neon-purple);
+  background: rgba(168, 85, 247, 0.04);
+  box-shadow: var(--glow-focus);
+}
+
+.inputIcon {
+  font-size: 18px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--foreground);
+}
+
+.input::placeholder {
+  color: rgba(240, 240, 240, 0.2);
+}
+
+.loadingDot {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(168, 85, 247, 0.3);
+  border-top-color: var(--neon-purple);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+/* Dropdown */
+.dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: var(--surface-elevated);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 14px;
+  overflow: hidden;
+  z-index: 100;
+  list-style: none;
+  animation: fadeIn 0.15s ease;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-bottom: 1px solid var(--border);
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.item:hover,
+.itemActive {
+  background: rgba(168, 85, 247, 0.12);
+}
+
+.itemIcon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.itemName {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.itemSuffix {
+  font-size: 13px;
+  color: var(--foreground-muted);
+}
+
+.empty {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  padding: 16px;
+  background: var(--surface-elevated);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 14px;
+  font-size: 14px;
+  color: var(--foreground-muted);
+  text-align: center;
+  animation: fadeIn 0.15s ease;
+}
+
+/* Selected badge */
+.selectedBadge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1.5px solid var(--neon-purple);
+  border-radius: 14px;
+  background: rgba(168, 85, 247, 0.08);
+  box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.15);
+}
+
+.subwayIcon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.selectedName {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  background: var(--gradient-neon-h);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.clearBtn {
+  background: none;
+  border: none;
+  color: var(--foreground-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+  line-height: 1;
+}
+
+.clearBtn:hover {
+  color: var(--foreground);
+  background: rgba(255, 255, 255, 0.08);
+}
