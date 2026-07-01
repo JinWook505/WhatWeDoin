@@ -19,7 +19,7 @@ export interface PlaceDetail {
   name: string
   category: string | null
   address: string | null
-  business_hours: Record<string, unknown> | null
+  business_hours: Record<string, unknown> | string | null
   price_range: string | null
   user_rating_avg: number | null
   user_rating_count: number
@@ -174,6 +174,7 @@ export interface CourseListResponse {
 
 export interface ReviewItem {
   review_id: number
+  author_name: string
   score: number
   comment: string | null
   links: string[]

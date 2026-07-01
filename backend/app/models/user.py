@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Enum, SmallInteger, String, TIMESTAMP, text
+from sqlalchemy import BigInteger, Boolean, Enum, ForeignKey, SmallInteger, String, TIMESTAMP, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -40,7 +40,7 @@ class User(Base):
     preferred_budget: Mapped[str | None] = mapped_column(
         Enum(BudgetTier, name="budget_tier")
     )
-    home_station_id: Mapped[int | None] = mapped_column(BigInteger)
+    home_station_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("stations.station_id"))
     terms_agreed_at: Mapped[str] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     privacy_agreed_at: Mapped[str] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     marketing_agreed: Mapped[bool] = mapped_column(Boolean, server_default=text("FALSE"))

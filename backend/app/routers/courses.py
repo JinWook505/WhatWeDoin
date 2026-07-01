@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
+from app.models.category_labels import place_category_label
 from app.models.enums import BudgetTier, CompanionType, ThemeTag
 
 router = APIRouter(prefix="/v1/courses", tags=["courses"])
@@ -281,7 +282,7 @@ async def get_course(
             "order": p["visit_order"],
             "place_id": p["place_id"],
             "name": p["name"],
-            "category": p["category"],
+            "category": place_category_label(p["category"]),
             "address": p["address"],
             "lat": float(p["lat"]) if p["lat"] else None,
             "lng": float(p["lng"]) if p["lng"] else None,

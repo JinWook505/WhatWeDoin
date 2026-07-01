@@ -113,3 +113,36 @@ async def test_course_detail_og_title_uses_korean_theme_labels():
     og_title = response.json()["data"]["og"]["title"]
     assert "BAR" not in og_title and "KARAOKE" not in og_title
     assert "술집" in og_title and "노래방" in og_title
+
+
+@pytest.mark.asyncio
+async def test_course_detail_place_category_uses_korean_label():
+    """D-24: places.category stores a raw Kakao category_group_code (e.g. 'FD6');
+    the API response must translate it, not leak the raw code to the client."""
+    course_row = {
+        "course_id": 7, "station_id": 1, "theme_tags": ["FOOD"],
+        "budget_tier": "UNDER_30000", "companion_type": "COUPLE", "head_count": 2,
+        "total_walking_distance_km": None, "bayesian_score": 0, "rating_count": 0,
+        "rating_sum": 0, "created_at": None, "station_name": "강남",
+    }
+    place_row = {
+        "visit_order": 1, "place_id": 1, "description": "", "walking_distance_to_next_km": None,
+        "name": "테스트 식당", "category": "FD6", "address": None, "lat": None, "lng": None,
+        "price_range": None, "business_hours": None, "map_url": None,
+        "user_rating_sum": 0, "user_rating_count": 0, "status": "OPEN", "last_synced_at": None,
+    }
+    session = AsyncMock()
+    course_result = MagicMock()
+    course_result.mappings.return_value.first.return_value = course_row
+    places_result = MagicMock()
+    places_result.mappings.return_value.all.return_value = [place_row]
+    session.execute = AsyncMock(side_effect=[course_result, places_result])
+
+    app.dependency_overrides[get_db] = lambda: session
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/courses/7")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    places = response.json()["data"]["places"]
+    assert places[0]["category"] == "음식점"

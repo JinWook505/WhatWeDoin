@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Double, String, TIMESTAMP, text
+from sqlalchemy import BigInteger, Boolean, Double, ForeignKey, String, TIMESTAMP, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -27,6 +27,7 @@ class StationLine(Base):
 
     station_id: Mapped[int] = mapped_column(
         BigInteger,
+        ForeignKey("stations.station_id"),
         primary_key=True,
     )
     line_no: Mapped[str] = mapped_column(String(20), primary_key=True)

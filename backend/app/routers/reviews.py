@@ -232,8 +232,9 @@ async def list_reviews(
         await db.execute(
             text(f"""
                 SELECT r.id, r.score, r.comment, r.links, r.created_at,
-                       r.user_id, r.ip_hash
+                       r.user_id, r.ip_hash, u.nickname
                 FROM course_reviews r
+                LEFT JOIN users u ON u.id = r.user_id
                 WHERE r.course_id = :cid {cursor_cond}
                 ORDER BY r.id DESC
                 LIMIT :limit
@@ -260,6 +261,7 @@ async def list_reviews(
         )
         reviews_out.append({
             "review_id": r["id"],
+            "author_name": r["nickname"] if r["user_id"] else "비로그인",
             "score": r["score"],
             "comment": r["comment"],
             "links": links or [],
