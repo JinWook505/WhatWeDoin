@@ -9,13 +9,12 @@ from app.models.enums import (
     DatingStage,
     GenderType,
     OAuthProvider,
-    ReportReason,
     ServedFrom,
     ThemeTag,
 )
 from app.models.place import Place
 from app.models.recommendation import RecommendationRequest
-from app.models.review import CourseReview, CourseReviewReport
+from app.models.review import CourseReview
 from app.models.station import Station, StationLine
 from app.models.user import User
 
@@ -28,14 +27,12 @@ __all__ = [
     "CourseCache",
     "CoursePlaces",
     "CourseReview",
-    "CourseReviewReport",
     "DatingStage",
     "GenderType",
     "OAuthProvider",
     "Place",
     "RecommendationRequest",
     "RefreshToken",
-    "ReportReason",
     "ServedFrom",
     "Station",
     "StationLine",

@@ -1,9 +1,8 @@
-from sqlalchemy import BigInteger, Enum, ForeignKey, SmallInteger, String, TIMESTAMP, text
+from sqlalchemy import BigInteger, ForeignKey, SmallInteger, String, TIMESTAMP, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
-from app.models.enums import ReportReason
 
 
 class CourseReview(Base):
@@ -20,21 +19,5 @@ class CourseReview(Base):
         TIMESTAMP(timezone=True), server_default=text("now()")
     )
     updated_at: Mapped[str | None] = mapped_column(
-        TIMESTAMP(timezone=True), server_default=text("now()")
-    )
-
-
-class CourseReviewReport(Base):
-    __tablename__ = "course_review_reports"
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    review_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("course_reviews.id", ondelete="CASCADE"), nullable=False)
-    user_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
-    ip_hash: Mapped[str | None] = mapped_column(String(64))
-    reason: Mapped[str] = mapped_column(
-        Enum(ReportReason, name="report_reason"), nullable=False
-    )
-    comment: Mapped[str | None] = mapped_column(String)
-    created_at: Mapped[str | None] = mapped_column(
         TIMESTAMP(timezone=True), server_default=text("now()")
     )

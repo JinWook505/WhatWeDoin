@@ -52,10 +52,3 @@ class ThemeTag(str, enum.Enum):
 class ServedFrom(str, enum.Enum):
     LLM = "LLM"
     CACHE = "CACHE"
-
-
-class ReportReason(str, enum.Enum):
-    SPAM = "SPAM"
-    INAPPROPRIATE = "INAPPROPRIATE"
-    WRONG_INFO = "WRONG_INFO"
-    OTHER = "OTHER"
