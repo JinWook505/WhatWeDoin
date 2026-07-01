@@ -7,7 +7,20 @@ import styles from "./page.module.css"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 
-const THEMES = ["데이트", "맛집", "카페", "야경", "힐링", "쇼핑", "문화", "액티비티"]
+const THEMES = [
+  { value: "FOOD", label: "맛집" },
+  { value: "CAFE", label: "카페" },
+  { value: "BAR", label: "술집" },
+  { value: "BOARD_GAME", label: "보드게임" },
+  { value: "KARAOKE", label: "노래방" },
+  { value: "ARCADE", label: "오락" },
+  { value: "PARK", label: "공원" },
+  { value: "CULTURE", label: "전시/문화" },
+  { value: "SHOPPING", label: "쇼핑" },
+  { value: "NIGHT_VIEW", label: "야경" },
+  { value: "MOVIE", label: "영화" },
+  { value: "ACTIVITY", label: "액티비티" },
+]
 const COMPANIONS = [
   { value: "COUPLE", label: "연인" },
   { value: "FRIEND", label: "친구" },
@@ -15,9 +28,20 @@ const COMPANIONS = [
   { value: "SOLO", label: "혼자" },
 ]
 const BUDGETS = [
-  { value: "BUDGET", label: "저렴하게 (인당 ~1만원)" },
-  { value: "MODERATE", label: "적당하게 (인당 1~3만원)" },
-  { value: "PREMIUM", label: "여유롭게 (인당 3만원+)" },
+  { value: "UNDER_30000", label: "~3만원" },
+  { value: "30000_70000", label: "3~7만원" },
+  { value: "70000_150000", label: "7~15만원" },
+  { value: "OVER_150000", label: "15만원~" },
+]
+const GENDERS = [
+  { value: "FEMALE", label: "여성" },
+  { value: "MALE", label: "남성" },
+  { value: "OTHER", label: "기타" },
+]
+const DATING_STAGES = [
+  { value: "SOME", label: "썸" },
+  { value: "EARLY", label: "초기" },
+  { value: "LONGTERM", label: "장기" },
 ]
 
 export default function OnboardingPage() {
@@ -33,6 +57,9 @@ export default function OnboardingPage() {
   const [companion, setCompanion] = useState("")
   const [selectedThemes, setSelectedThemes] = useState<string[]>([])
   const [budget, setBudget] = useState("")
+  const [gender, setGender] = useState("")
+  const [birthYear, setBirthYear] = useState("")
+  const [datingStage, setDatingStage] = useState("")
   const [saving, setSaving] = useState(false)
 
   const allRequired = termsRequired && privacyRequired
@@ -50,28 +77,41 @@ export default function OnboardingPage() {
     )
   }
 
+  async function persistConsentAndPersonalization(personalize: boolean) {
+    const now = new Date().toISOString()
+    const body: Record<string, unknown> = {
+      terms_agreed_at: now,
+      privacy_agreed_at: now,
+      marketing_agreed: marketingOptional,
+    }
+    if (personalize) {
+      if (selectedThemes.length > 0) body.preferred_theme_tags = selectedThemes
+      if (companion) body.preferred_companion_type = companion
+      if (budget) body.preferred_budget = budget
+      if (gender) body.gender = gender
+      if (birthYear) body.birth_year = Number(birthYear)
+      if (companion === "COUPLE" && datingStage) body.dating_stage = datingStage
+    }
+    try {
+      await fetchWithAuth(`${API_URL}/v1/users/me`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+    } catch {
+      // non-critical — proceed anyway, user can edit later in 마이페이지
+    }
+  }
+
   async function handleSaveAndFinish() {
     setSaving(true)
-    try {
-      if (companion || selectedThemes.length > 0 || budget) {
-        await fetchWithAuth(`${API_URL}/v1/users/me`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            preferred_themes: selectedThemes,
-            preferred_companion: companion || null,
-            preferred_budget_tier: budget || null,
-          }),
-        })
-      }
-    } catch {
-      // non-critical — proceed anyway
-    }
+    await persistConsentAndPersonalization(true)
     localStorage.setItem("wwd_agreed", "1")
     router.replace("/")
   }
 
-  function handleSkip() {
+  async function handleSkip() {
+    await persistConsentAndPersonalization(false)
     localStorage.setItem("wwd_agreed", "1")
     router.replace("/")
   }
@@ -166,15 +206,60 @@ export default function OnboardingPage() {
               <div className={styles.chipRow}>
                 {THEMES.map((t) => (
                   <button
-                    key={t}
-                    className={`${styles.chip} ${selectedThemes.includes(t) ? styles.chipActive : ""}`}
-                    onClick={() => toggleTheme(t)}
+                    key={t.value}
+                    className={`${styles.chip} ${selectedThemes.includes(t.value) ? styles.chipActive : ""}`}
+                    onClick={() => toggleTheme(t.value)}
                   >
-                    {t}
+                    {t.label}
                   </button>
                 ))}
               </div>
             </div>
+
+            <div className={styles.section}>
+              <p className={styles.sectionLabel}>성별 (선택)</p>
+              <div className={styles.chipRow}>
+                {GENDERS.map((g) => (
+                  <button
+                    key={g.value}
+                    className={`${styles.chip} ${gender === g.value ? styles.chipActive : ""}`}
+                    onClick={() => setGender(gender === g.value ? "" : g.value)}
+                  >
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className={styles.section}>
+              <p className={styles.sectionLabel}>출생연도 (선택)</p>
+              <input
+                type="number"
+                className={styles.yearInput}
+                placeholder="예: 1998"
+                value={birthYear}
+                onChange={(e) => setBirthYear(e.target.value)}
+                min={1900}
+                max={new Date().getFullYear()}
+              />
+            </div>
+
+            {companion === "COUPLE" && (
+              <div className={styles.section}>
+                <p className={styles.sectionLabel}>연애 단계 (선택)</p>
+                <div className={styles.chipRow}>
+                  {DATING_STAGES.map((d) => (
+                    <button
+                      key={d.value}
+                      className={`${styles.chip} ${datingStage === d.value ? styles.chipActive : ""}`}
+                      onClick={() => setDatingStage(datingStage === d.value ? "" : d.value)}
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className={styles.section}>
               <p className={styles.sectionLabel}>선호 예산대</p>

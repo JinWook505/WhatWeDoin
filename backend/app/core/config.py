@@ -4,6 +4,9 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/whatwedoin"
 
+    # CORS — comma-separated list of allowed frontend origins
+    CORS_ALLOWED_ORIGINS: str = "http://localhost:3000"
+
     # Kakao OAuth
     KAKAO_REST_API_KEY: str = ""
     KAKAO_CLIENT_SECRET: str = ""

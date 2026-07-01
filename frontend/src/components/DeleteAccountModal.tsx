@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { clearTokens, fetchWithAuth } from "@/lib/auth"
 import styles from "./DeleteAccountModal.module.css"
 
@@ -13,7 +12,6 @@ interface Props {
 }
 
 export default function DeleteAccountModal({ isOpen, onClose }: Props) {
-  const router = useRouter()
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -26,7 +24,10 @@ export default function DeleteAccountModal({ isOpen, onClose }: Props) {
       const res = await fetchWithAuth(`${API_URL}/v1/users/me`, { method: "DELETE" })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       clearTokens()
-      router.replace("/")
+      // Full reload (not router.replace) — the modal lives on "/" itself, so a
+      // client-side navigation to the same route would leave this component's
+      // "deleting" state stuck forever instead of resetting the logged-out UI.
+      window.location.href = "/"
     } catch {
       setError("탈퇴 처리 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
       setDeleting(false)

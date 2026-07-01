@@ -80,6 +80,8 @@
 | **D-18** | **`rating.prior_mean=50`, `prior_count=5` 확정** | 2026-06-25. 리뷰 없는 코스의 기본 베이지안 점수를 중립값 50으로 설정. |
 | **D-19** | **IP 리뷰 어뷰징 추가 방어(캡차 등) → V2** | 2026-06-25. MVP는 `ratelimit.review_ip_daily` 일일 한도만 적용. 캡차·핑거프린트 등은 V2. |
 | **D-20** | **초기 입력에서 지하철역 수동 선택 UI 제거 → 질의어 자연어에서 LLM이 지명/동네를 추출해 최근접 지원 역에 매핑** | 2026-07-01. `station_name`(LLM 추출) → `station_id`(DB resolve)로 서버에서 처리(D-1 단일 역 정책은 유지). 지명 언급이 없거나 매칭 실패 시 US-A4 추가 입력 Step에서 역 검색 UI(구 US-A2)를 폴백으로 노출. GPS 자동 수집은 계속 미사용(11장). |
+| **D-21** | **`recommendation_requests.user_id`를 nullable로 변경(D-8과 11.1의 충돌 해소)** | 2026-07-01. D-8("생성은 로그인 필수, `user_id` NOT NULL")과 11.1("탈퇴 시 `recommendation_requests.user_id` NULL로 비식별화")이 스키마 레벨에서 충돌해 회원 탈퇴가 `NotNullViolationError`로 항상 실패하던 버그를 발견. 생성 시점의 "로그인 필수" 보장은 애플리케이션 레벨(`require_current_user`)에서 계속 유지하되, 탈퇴 후 비식별화를 위해 컬럼 자체의 `NOT NULL` 제약은 제거. |
+| **D-22** | **`course_reviews.chk_review_identity` 제거(D-21과 동일 유형의 충돌)** | 2026-07-01. 로그인 리뷰(`ip_hash` 없음)를 탈퇴로 `user_id`까지 NULL 처리하면 "`user_id` 또는 `ip_hash` 중 하나는 필수" CHECK를 위반해 탈퇴가 `CheckViolationError`로 실패. 작성 시점 규칙은 `POST /reviews`에서 이미 앱 레벨로 보장되므로 DB 제약은 제거(재발 방지: 탈퇴 로직이 건드리는 모든 테이블의 제약을 D-21/D-22 계기로 전수 점검함). |
 
 ---
 
@@ -542,7 +544,7 @@ CREATE TYPE served_from AS ENUM ('LLM', 'CACHE');
 
 CREATE TABLE recommendation_requests (
     id                BIGSERIAL PRIMARY KEY,
-    user_id           BIGINT NOT NULL REFERENCES users(id),  -- D-8: 생성은 로그인 필수
+    user_id           BIGINT REFERENCES users(id),  -- D-8: 생성 시점엔 앱 레벨에서 항상 로그인 사용자 값을 채움. D-21: 탈퇴 시 11.1 비식별화(NULL)를 위해 컬럼 자체는 nullable
     station_id        BIGINT NOT NULL REFERENCES stations(station_id),  -- D-20: 질의어 location_mention을 서버가 resolve한 결과(레코드 시점엔 항상 확정)
     query_text        TEXT NOT NULL,                     -- 입력 질의어(자연어)
     parsed_input      JSONB,                             -- 분류 결과 {location_mention, theme_tags: theme_tag[], budget_tier, companion_type, head_count}
@@ -572,7 +574,9 @@ CREATE TABLE course_reviews (
     links       JSONB NOT NULL DEFAULT '[]',                 -- 참고 링크 배열(선택), 예: ["https://..."]
     created_at  TIMESTAMPTZ DEFAULT now(),
     updated_at  TIMESTAMPTZ DEFAULT now(),
-    CONSTRAINT chk_review_identity CHECK (user_id IS NOT NULL OR ip_hash IS NOT NULL),
+    -- D-22: chk_review_identity 제거. 작성 시 user_id/ip_hash 중 하나 필수인 규칙은
+    -- 앱 레벨(POST /reviews)에서 이미 보장되며, 탈퇴 비식별화(11.1)로 user_id를 NULL
+    -- 처리할 때 ip_hash 없는(로그인) 리뷰가 둘 다 NULL이 되는 정상 케이스와 충돌했음.
     CONSTRAINT chk_review_score CHECK (score BETWEEN 0 AND 100 AND score % 5 = 0)
 );
 CREATE UNIQUE INDEX uq_review_user ON course_reviews (course_id, user_id) WHERE user_id IS NOT NULL;
@@ -1127,7 +1131,7 @@ GET /v1/courses/{course_id}
 
 ### 11.1 탈퇴 시 개인정보 파기/익명화 (PIPA)
 - `DELETE /v1/users/me` → `status=WITHDRAWN`과 **동시에** 개인정보 컬럼 파기/익명화: `nickname`·`profile_image_url`·`email` 삭제, `gender/birth_year/dating_stage`·`oauth_id` 제거/비식별화.
-- `course_reviews`/`recommendation_requests`의 `user_id`는 통계 보존 필요 시 **익명화**(NULL/무의미 토큰). 리뷰 본문(댓글·링크)은 보존 정책에 따라 익명 처리.
+- `course_reviews`/`recommendation_requests`의 `user_id`는 통계 보존 필요 시 **익명화**(NULL). 두 컬럼 모두 nullable(D-21 — `recommendation_requests.user_id`는 원래 D-8로 NOT NULL이었으나 본 익명화를 위해 완화). `course_reviews.chk_review_identity`(user_id/ip_hash 중 하나 필수) CHECK도 같은 이유로 제거(D-22) — 로그인 리뷰는 `ip_hash`가 원래 없어 `user_id`까지 비우면 위반되던 문제. 리뷰 본문(댓글·링크)은 보존 정책에 따라 익명 처리.
 - DB `refresh_tokens`에서 해당 `user_id` 레코드 일괄 폐기(revoked_at 설정).
 
 ### 11.2 외부 데이터 수집의 법적 리스크 (⚠️ 출시 전 필수, US-F4)
