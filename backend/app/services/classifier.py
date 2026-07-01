@@ -58,6 +58,13 @@ class InvalidQueryError(Exception):
     pass
 
 
+class NeedsClarificationError(Exception):
+    def __init__(self, missing_fields: list[str], partial_parsed_input: dict):
+        self.missing_fields = missing_fields
+        self.partial_parsed_input = partial_parsed_input
+        super().__init__(f"Missing required fields: {missing_fields}")
+
+
 @dataclass
 class QueryClassification:
     theme_tags: list[ThemeTag]
@@ -121,6 +128,21 @@ async def classify_query(
     station_name = data.get("station_name") or None
     if station_name:
         station_name = station_name.strip()
+
+    missing_fields: list[str] = []
+    if companion_type is None:
+        missing_fields.append("companion_type")
+    if budget_tier is None:
+        missing_fields.append("budget_tier")
+
+    if missing_fields:
+        partial: dict = {
+            "theme_tags": [t.value for t in theme_tags],
+            "head_count": head_count,
+        }
+        if station_name:
+            partial["station_name"] = station_name
+        raise NeedsClarificationError(missing_fields=missing_fields, partial_parsed_input=partial)
 
     return QueryClassification(
         theme_tags=theme_tags,

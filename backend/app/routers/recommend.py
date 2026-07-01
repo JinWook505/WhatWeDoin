@@ -22,7 +22,13 @@ from app.services.cache_ratelimit import (
     record_request,
     set_course_cache,
 )
-from app.services.classifier import InvalidQueryError, classify_query
+from app.models.enums import BudgetTier, CompanionType, ThemeTag
+from app.services.classifier import (
+    InvalidQueryError,
+    NeedsClarificationError,
+    QueryClassification,
+    classify_query,
+)
 from app.services.course_generator import (
     CourseGenerationError,
     generate_course,
@@ -165,6 +171,7 @@ class RecommendRequest(BaseModel):
     station_id: int | None = None
     query: str
     exclude_place_ids: list[int] = []
+    parsed_input: dict | None = None  # pre-filled fields after NEEDS_CLARIFICATION
 
 
 class PlaceDetail(BaseModel):
@@ -223,14 +230,27 @@ async def recommend(
             },
         )
 
-    # 3. Classify
-    try:
-        classification = await classify_query(req.query)
-    except InvalidQueryError as e:
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "INVALID_QUERY", "message": str(e)},
-        )
+    # 3. Classify (skip when FE provides pre-filled parsed_input after NEEDS_CLARIFICATION)
+    if req.parsed_input is not None:
+        classification = _build_classification_from_parsed_input(req.parsed_input)
+    else:
+        try:
+            classification = await classify_query(req.query)
+        except NeedsClarificationError as e:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "NEEDS_CLARIFICATION",
+                    "partial_parsed_input": e.partial_parsed_input,
+                    "missing_fields": e.missing_fields,
+                },
+            )
+        except InvalidQueryError as e:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "INVALID_QUERY", "message": str(e)},
+            )
 
     theme_tags = [t.value for t in classification.theme_tags]
     budget_tier = (
@@ -600,3 +620,39 @@ async def get_placeholder(
         },
         "error": None,
     }
+
+
+def _build_classification_from_parsed_input(data: dict) -> "QueryClassification":
+    theme_tags = []
+    for t in data.get("theme_tags") or []:
+        try:
+            theme_tags.append(ThemeTag(t))
+        except ValueError:
+            pass
+
+    budget_raw = data.get("budget_tier")
+    budget_tier = None
+    if budget_raw:
+        try:
+            budget_tier = BudgetTier(budget_raw)
+        except ValueError:
+            pass
+
+    companion_raw = data.get("companion_type")
+    companion_type = None
+    if companion_raw:
+        try:
+            companion_type = CompanionType(companion_raw)
+        except ValueError:
+            pass
+
+    raw_count = data.get("head_count")
+    head_count = max(1, min(10, int(raw_count))) if raw_count else 2
+
+    return QueryClassification(
+        theme_tags=theme_tags,
+        station_name=data.get("station_name") or None,
+        budget_tier=budget_tier,
+        companion_type=companion_type,
+        head_count=head_count,
+    )
