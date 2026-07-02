@@ -148,6 +148,30 @@ class TestBuildCandidatePrompt:
         assert "음식점" in prompt
         assert "FD6" not in prompt
 
+    def test_menu_keyword_adds_priority_instruction(self):
+        """SCRUM-97: an explicit menu_keyword (e.g. '치킨' from '치맥') must tell the LLM
+        to prioritize name-matching candidates."""
+        candidates = [
+            {"place_id": 1, "name": "마곡닭한마리", "category": "FD6",
+             "price_range": "3만원대", "user_rating_sum": 0, "user_rating_count": 0},
+        ]
+        prompt = _build_candidate_prompt(
+            "강동에서 치맥할건데 추천해줘", candidates, ["FOOD", "BAR"],
+            "UNDER_30000", "FRIEND", None, menu_keyword="치킨",
+        )
+        assert "치킨" in prompt
+        assert "최우선" in prompt
+
+    def test_no_menu_keyword_omits_priority_instruction(self):
+        candidates = [
+            {"place_id": 1, "name": "노랑저고리 강남점", "category": "FD6",
+             "price_range": "3만원대", "user_rating_sum": 0, "user_rating_count": 0},
+        ]
+        prompt = _build_candidate_prompt(
+            "밥집만 추천해줘", candidates, ["FOOD"], "UNDER_30000", "FAMILY", None
+        )
+        assert "최우선" not in prompt
+
 
 class TestGenerateCourse:
     _CANDIDATES = [
@@ -285,6 +309,29 @@ class TestGenerateCourse:
 
         assert result is None
         assert mock_llm.chat.call_count == 3
+
+    async def test_menu_keyword_forwarded_to_candidate_search(self):
+        """SCRUM-97: when generate_course fetches its own candidates (no pre_fetched_candidates),
+        menu_keyword must reach search_candidate_places for name-priority boosting."""
+        from app.services.course_generator import generate_course
+
+        mock_llm = AsyncMock()
+        mock_llm.chat.return_value = MagicMock(
+            content=self._llm_response([("치맥", [1, 2, 3])])
+        )
+        mock_search = AsyncMock(return_value=self._CANDIDATES)
+
+        with patch("app.services.course_generator.search_candidate_places", mock_search), \
+             patch("app.services.course_generator.get_llm_provider", return_value=mock_llm), \
+             patch("app.services.course_generator.fetch_weather", AsyncMock(return_value=None)):
+            await generate_course(
+                AsyncMock(), station_id=1,
+                theme_tags=["FOOD"], budget_tier="UNDER_30000",
+                companion_type="FRIEND", query_text="강동에서 치맥할건데 추천해줘",
+                menu_keyword="치킨",
+            )
+
+        assert mock_search.call_args.kwargs["menu_keyword"] == "치킨"
 
     async def test_raises_when_no_candidates(self):
         from app.services.course_generator import generate_course

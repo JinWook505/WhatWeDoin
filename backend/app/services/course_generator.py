@@ -108,6 +108,7 @@ def _build_candidate_prompt(
     budget_tier: str,
     companion_type: str,
     weather: dict | None,
+    menu_keyword: str | None = None,
 ) -> str:
     lines = [
         f"사용자 요청: {query_text}",
@@ -115,6 +116,11 @@ def _build_candidate_prompt(
         f"예산: {budget_tier}",
         f"동반자: {companion_type}",
     ]
+    if menu_keyword:
+        lines.append(
+            f"사용자가 명시한 메뉴/음식: {menu_keyword} "
+            f"— 후보 이름에 이 키워드가 포함된 장소를 최우선으로 선택하세요."
+        )
     if weather:
         lines.append(
             f"현재 날씨: {weather.get('description', '')} "
@@ -203,6 +209,7 @@ async def generate_course(
     query_text: str,
     exclude_place_ids: list[int] | None = None,
     pre_fetched_candidates: list[dict] | None = None,
+    menu_keyword: str | None = None,
 ) -> GeneratedCourse | None:
     """Retrieve candidate places and ask LLM to design a staged course.
 
@@ -214,7 +221,7 @@ async def generate_course(
     else:
         candidates = await search_candidate_places(
             session, station_id, theme_tags=theme_tags,
-            exclude_place_ids=exclude_place_ids,
+            exclude_place_ids=exclude_place_ids, menu_keyword=menu_keyword,
         )
     if not candidates:
         raise CourseGenerationError("NO_CANDIDATES")
@@ -222,7 +229,7 @@ async def generate_course(
     candidate_ids = {c["place_id"] for c in candidates}
     weather = await fetch_weather()
     prompt = _build_candidate_prompt(
-        query_text, candidates, theme_tags, budget_tier, companion_type, weather
+        query_text, candidates, theme_tags, budget_tier, companion_type, weather, menu_keyword
     )
     single_category = len(theme_tags) == 1
     min_stages = _SINGLE_CATEGORY_MIN_STAGES if single_category else _MIN_STAGES

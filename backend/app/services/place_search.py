@@ -16,13 +16,20 @@ async def search_candidate_places(
     theme_tags: list[str] | None = None,
     exclude_place_ids: list[int] | None = None,
     limit: int = 30,
+    menu_keyword: str | None = None,
 ) -> list[dict]:
     """Return candidate places near a station via PostGIS ST_DWithin.
 
     Expands radius from radius_km → _RADIUS_EXPANSION_KM if fewer than
     _MIN_CANDIDATES results are found on the first pass.
+
+    When menu_keyword is given (e.g. "치킨" from a "치맥" request), candidates
+    whose name contains it are sorted first — boosted, not filtered, so the
+    pool still fills out with theme/distance matches when few or no names match.
     """
-    results = await _query(session, station_id, radius_km, theme_tags, exclude_place_ids, limit)
+    results = await _query(
+        session, station_id, radius_km, theme_tags, exclude_place_ids, limit, menu_keyword
+    )
 
     if len(results) < _MIN_CANDIDATES:
         logger.info(
@@ -30,7 +37,8 @@ async def search_candidate_places(
             station_id, len(results), radius_km, _RADIUS_EXPANSION_KM,
         )
         results = await _query(
-            session, station_id, _RADIUS_EXPANSION_KM, theme_tags, exclude_place_ids, limit
+            session, station_id, _RADIUS_EXPANSION_KM, theme_tags, exclude_place_ids, limit,
+            menu_keyword,
         )
 
     # If theme filter yields too few results, fall back to no theme filter
@@ -40,7 +48,7 @@ async def search_candidate_places(
             station_id, len(results),
         )
         results = await _query(
-            session, station_id, _RADIUS_EXPANSION_KM, None, exclude_place_ids, limit
+            session, station_id, _RADIUS_EXPANSION_KM, None, exclude_place_ids, limit, menu_keyword
         )
 
     return results
@@ -53,6 +61,7 @@ async def _query(
     theme_tags: list[str] | None,
     exclude_place_ids: list[int] | None,
     limit: int,
+    menu_keyword: str | None = None,
 ) -> list[dict]:
     # Build filters inline to avoid asyncpg custom-type array binding issues
     theme_clause = ""
@@ -64,6 +73,16 @@ async def _query(
     if exclude_place_ids:
         id_literals = ", ".join(str(i) for i in exclude_place_ids)
         exclude_clause = f"AND p.place_id NOT IN ({id_literals})"
+
+    order_clause = "distance_m"
+    params: dict = {
+        "station_id": station_id,
+        "radius_m": radius_km * 1000,
+        "limit": limit,
+    }
+    if menu_keyword:
+        order_clause = "(p.name ILIKE :menu_kw) DESC, distance_m"
+        params["menu_kw"] = f"%{menu_keyword}%"
 
     sql = text(f"""
         SELECT
@@ -78,15 +97,9 @@ async def _query(
           AND ST_DWithin(p.geom::geography, s.geom::geography, :radius_m)
           {theme_clause}
           {exclude_clause}
-        ORDER BY distance_m
+        ORDER BY {order_clause}
         LIMIT :limit
     """)
-
-    params: dict = {
-        "station_id": station_id,
-        "radius_m": radius_km * 1000,
-        "limit": limit,
-    }
 
     result = await session.execute(sql, params)
     return [dict(row) for row in result.mappings().all()]

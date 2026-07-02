@@ -137,6 +137,38 @@ class TestClassifyQuery:
             await classify_query("여의도에서 놀고 싶어")
 
     @patch("app.services.classifier.get_llm_provider")
+    async def test_menu_keyword_extracted(self, mock_get):
+        """SCRUM-97: '치맥' → menu_keyword '치킨' so candidate search can prioritize it."""
+        mock_get.return_value = _mock_provider(
+            '{"station_name": "강동", "theme_tags": ["FOOD", "BAR"], "budget_tier": "UNDER_30000", '
+            '"companion_type": "FRIEND", "head_count": 2, "menu_keyword": "치킨"}'
+        )
+        from app.services.classifier import classify_query
+        result = await classify_query("강동에서 치맥할건데 추천해줘")
+        assert result.menu_keyword == "치킨"
+
+    @patch("app.services.classifier.get_llm_provider")
+    async def test_menu_keyword_null_for_generic_request(self, mock_get):
+        mock_get.return_value = _mock_provider(
+            '{"station_name": "강남", "theme_tags": ["FOOD"], "budget_tier": "UNDER_30000", '
+            '"companion_type": "FRIEND", "head_count": 2, "menu_keyword": null}'
+        )
+        from app.services.classifier import classify_query
+        result = await classify_query("강남에서 밥 먹을 곳")
+        assert result.menu_keyword is None
+
+    @patch("app.services.classifier.get_llm_provider")
+    async def test_menu_keyword_carried_through_needs_clarification(self, mock_get):
+        mock_get.return_value = _mock_provider(
+            '{"theme_tags": ["FOOD"], "budget_tier": "UNDER_30000", "companion_type": "SOLO", '
+            '"head_count": 1, "menu_keyword": "치킨"}'
+        )
+        from app.services.classifier import classify_query
+        with pytest.raises(NeedsClarificationError) as exc_info:
+            await classify_query("치킨 먹을 곳 추천해줘")
+        assert exc_info.value.partial_parsed_input["menu_keyword"] == "치킨"
+
+    @patch("app.services.classifier.get_llm_provider")
     async def test_needs_clarification_station_missing(self, mock_get):
         mock_get.return_value = _mock_provider(
             '{"theme_tags": ["FOOD"], "budget_tier": "UNDER_30000", "companion_type": "SOLO", "head_count": 1}'

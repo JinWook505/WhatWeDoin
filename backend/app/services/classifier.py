@@ -21,7 +21,8 @@ _SYSTEM_PROMPT = """당신은 데이트 코스 추천 서비스의 질의어 분
   "theme_tags": ["FOOD", "CAFE"],
   "budget_tier": "UNDER_30000",
   "companion_type": "COUPLE",
-  "head_count": 2
+  "head_count": 2,
+  "menu_keyword": null
 }
 
 station_name 규칙 (매우 중요):
@@ -62,6 +63,12 @@ budget_tier 가능 값: UNDER_15000, UNDER_30000, 30000_70000, 70000_150000, OVE
 companion_type 가능 값: SOLO, FRIEND, COUPLE, FAMILY, null
 head_count: 1~10 정수
 
+menu_keyword (매우 중요):
+- 사용자가 구체적인 메뉴/음식을 명시한 경우, 장소 검색에 쓸 짧은 키워드(2~4자, 명사)를 담으세요.
+  예: "치맥" → "치킨", "물회 먹고싶어" → "물회", "파스타 먹으러 가고싶어" → "파스타",
+      "냉면 맛집" → "냉면"
+- 특정 메뉴 언급이 없고 막연히 "밥", "맛집", "먹을 곳"처럼 일반적인 경우는 null.
+
 분류가 완전히 불가한 경우:
 {"error": "INVALID_QUERY"}"""
 
@@ -84,6 +91,7 @@ class QueryClassification:
     budget_tier: BudgetTier | None = None
     companion_type: CompanionType | None = None
     head_count: int = 2
+    menu_keyword: str | None = None
 
 
 async def classify_query(
@@ -147,6 +155,9 @@ async def classify_query(
     if station_name:
         station_name = station_name.strip()
 
+    menu_keyword_raw = data.get("menu_keyword")
+    menu_keyword = menu_keyword_raw.strip() if isinstance(menu_keyword_raw, str) and menu_keyword_raw.strip() else None
+
     missing_fields: list[str] = []
     if not station_name:
         missing_fields.append("station_id")
@@ -162,6 +173,8 @@ async def classify_query(
         }
         if station_name:
             partial["station_name"] = station_name
+        if menu_keyword:
+            partial["menu_keyword"] = menu_keyword
         raise NeedsClarificationError(missing_fields=missing_fields, partial_parsed_input=partial)
 
     return QueryClassification(
@@ -170,4 +183,5 @@ async def classify_query(
         budget_tier=budget_tier,
         companion_type=companion_type,
         head_count=head_count,
+        menu_keyword=menu_keyword,
     )
