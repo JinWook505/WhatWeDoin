@@ -1,3 +1,6 @@
+from pathlib import Path
+
+import yaml
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -8,6 +11,22 @@ from app.routers import auth, courses, health, places, recommend, reviews, stati
 from app.services.llm.base import LLMUnavailableError
 
 app = FastAPI(title="WhatWeDoin API")
+
+# Serve the hand-authored OpenAPI spec (backend/openapi.yaml) at /docs instead of
+# FastAPI's auto-generated schema — the auto-generated one lacks the descriptions,
+# examples and NEEDS_CLARIFICATION branching documented by hand in that file.
+_OPENAPI_SPEC_PATH = Path(__file__).resolve().parent.parent / "openapi.yaml"
+
+
+def _custom_openapi() -> dict:
+    if app.openapi_schema:
+        return app.openapi_schema
+    with open(_OPENAPI_SPEC_PATH, encoding="utf-8") as f:
+        app.openapi_schema = yaml.safe_load(f)
+    return app.openapi_schema
+
+
+app.openapi = _custom_openapi
 
 app.add_middleware(
     CORSMiddleware,

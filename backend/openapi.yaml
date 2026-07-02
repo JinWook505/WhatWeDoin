@@ -1,0 +1,1453 @@
+openapi: 3.0.3
+info:
+  title: WhatWeDoin API
+  description: |
+    "오늘 뭐하고 놀지?" — AI가 지하철역 기반으로 놀거리 코스를 즉시 추천해주는 서비스의 백엔드 API.
+
+    - 모든 응답은 `success` / `data` / `error` 엔벨로프를 따릅니다 (일부 레거시 엔드포인트 제외).
+    - 인증이 필요한 엔드포인트는 `Authorization: Bearer <access_token>` 헤더가 필요합니다.
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8000
+    description: Local development
+tags:
+  - name: health
+    description: 헬스체크
+  - name: auth
+    description: 카카오 OAuth 로그인, JWT 토큰 관리
+  - name: stations
+    description: 지하철역 조회/검색
+  - name: courses
+    description: 코스 목록/상세 조회
+  - name: recommend
+    description: AI 코스 추천
+  - name: reviews
+    description: 코스 리뷰(평점) 작성/조회/삭제
+  - name: places
+    description: 장소 정보 제보(리포트)
+  - name: users
+    description: 내 프로필 및 내가 만든 코스
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: 헬스체크
+      operationId: healthCheck
+      responses:
+        "200":
+          description: 서비스 정상
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /v1/auth/kakao:
+    post:
+      tags: [auth]
+      summary: 카카오 OAuth 로그인
+      description: 카카오 인가 코드로 토큰을 교환하고, 사용자 upsert 후 access/refresh 토큰을 발급합니다.
+      operationId: kakaoLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KakaoLoginRequest"
+      responses:
+        "200":
+          description: 로그인 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/AuthTokenResponse"
+        "400":
+          description: 카카오 인증/프로필 조회 실패
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpErrorDetail"
+
+  /v1/auth/refresh:
+    post:
+      tags: [auth]
+      summary: Access token 재발급
+      description: refresh token을 검증/회전하여 새 access/refresh 토큰 쌍을 발급합니다.
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: 재발급 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          access_token:
+                            type: string
+                          refresh_token:
+                            type: string
+        "401":
+          description: 유효하지 않은 refresh token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpErrorDetail"
+
+  /v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: 로그아웃
+      description: 현재 사용자의 모든 refresh token을 폐기합니다.
+      operationId: logout
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 로그아웃 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          logged_out:
+                            type: boolean
+                            example: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/stations:
+    get:
+      tags: [stations]
+      summary: 지하철역 목록 조회 (뷰포트/검색)
+      description: 지도 뷰포트 바운딩 박스 또는 이름 검색어로 지원 대상 역 목록을 조회합니다.
+      operationId: listStations
+      parameters:
+        - name: sw_lat
+          in: query
+          schema:
+            type: number
+            format: double
+          description: 남서 위도
+        - name: sw_lng
+          in: query
+          schema:
+            type: number
+            format: double
+          description: 남서 경도
+        - name: ne_lat
+          in: query
+          schema:
+            type: number
+            format: double
+          description: 북동 위도
+        - name: ne_lng
+          in: query
+          schema:
+            type: number
+            format: double
+          description: 북동 경도
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 50
+            default: ""
+          description: 역명 검색어
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: 역 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StationResult"
+
+  /v1/stations/search:
+    get:
+      tags: [stations]
+      summary: 역명 자동완성 검색
+      operationId: searchStations
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 50
+            default: ""
+          description: 역명 검색어
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 30
+            default: 10
+      responses:
+        "200":
+          description: 역 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StationResult"
+
+  /v1/stations/{station_id}:
+    get:
+      tags: [stations]
+      summary: 역 상세 조회
+      operationId: getStation
+      parameters:
+        - name: station_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: 역 상세
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StationResult"
+        "404":
+          description: 역을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpErrorDetail"
+
+  /v1/courses:
+    get:
+      tags: [courses]
+      summary: 코스 목록 조회 (필터/커서 페이지네이션)
+      operationId: listCourses
+      parameters:
+        - name: station_id
+          in: query
+          schema:
+            type: integer
+        - name: theme
+          in: query
+          description: 테마 태그 (복수 선택 가능)
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/ThemeTag"
+        - name: companion_type
+          in: query
+          schema:
+            $ref: "#/components/schemas/CompanionType"
+        - name: head_count
+          in: query
+          schema:
+            type: integer
+        - name: budget_tier
+          in: query
+          schema:
+            $ref: "#/components/schemas/BudgetTier"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [score, recent]
+            default: score
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: 이전 응답의 next_cursor 값 (base64)
+      responses:
+        "200":
+          description: 코스 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          courses:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/CourseSummary"
+                          next_cursor:
+                            type: string
+                            nullable: true
+        "400":
+          description: 유효하지 않은 테마/동행 유형/예산대/커서
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpErrorDetail"
+
+  /v1/courses/{course_id}:
+    get:
+      tags: [courses]
+      summary: 코스 상세 조회
+      operationId: getCourse
+      parameters:
+        - name: course_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: 코스 상세
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/CourseDetail"
+        "404":
+          description: 코스를 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpErrorDetail"
+
+  /v1/courses/recommend:
+    post:
+      tags: [recommend]
+      summary: AI 코스 추천
+      description: |
+        자연어 질의를 분류하고 후보 장소를 조회해 AI로 코스를 생성합니다.
+        - `Idempotency-Key` 헤더로 중복 요청을 방지할 수 있습니다.
+        - 역 이름을 해석하지 못하거나 필수 필드(동행유형/예산대)가 부족하면
+          HTTP 200과 함께 `status: "NEEDS_CLARIFICATION"` 페이로드를 반환합니다
+          (이 경우 `SuccessEnvelope`를 따르지 않습니다).
+        - 사용자당 하루 3회의 LLM 호출 쿼터가 있습니다(캐시 히트는 제외).
+      operationId: recommendCourse
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+          description: 동일 키로 재요청 시 최초 생성된 코스를 그대로 반환합니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecommendRequest"
+      responses:
+        "200":
+          description: |
+            추천 성공 또는 추가 정보가 필요한 경우(NEEDS_CLARIFICATION).
+            `oneOf`로 두 형태 중 하나가 반환됩니다.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - allOf:
+                      - $ref: "#/components/schemas/SuccessEnvelope"
+                      - type: object
+                        properties:
+                          data:
+                            $ref: "#/components/schemas/RecommendCourseData"
+                  - $ref: "#/components/schemas/NeedsClarificationResponse"
+        "400":
+          description: 유효하지 않은 질의(INVALID_QUERY)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpErrorDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: 후보 장소 없음(NO_CANDIDATES)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpErrorDetail"
+        "429":
+          description: 일일 추천 쿼터 초과(QUOTA_EXCEEDED)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpErrorDetail"
+        "503":
+          description: LLM 서비스 일시 장애(LLM_UNAVAILABLE). 대체 인기 코스가 fallback_courses로 함께 내려갈 수 있습니다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpErrorDetail"
+
+  /v1/recommend/placeholder:
+    get:
+      tags: [recommend]
+      summary: 검색창 동적 플레이스홀더 조회
+      description: |
+        우선순위: ① 로그인 사용자의 최근 질문 → ② 날씨 기반 문구 → ③ 시간대 기반 문구 → ④ 기본 예시.
+      operationId: getRecommendPlaceholder
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        "200":
+          description: 플레이스홀더 문구
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          placeholder:
+                            type: string
+                          source:
+                            type: string
+                            enum: [RECENT, WEATHER, TIME, DEFAULT]
+                          weather:
+                            type: object
+                            nullable: true
+                            properties:
+                              temp:
+                                type: number
+                              main:
+                                type: string
+
+  /v1/courses/{course_id}/reviews:
+    post:
+      tags: [reviews]
+      summary: 코스 리뷰 작성/수정 (upsert)
+      description: 로그인 사용자는 user_id 기준, 비로그인 사용자는 IP 해시 기준으로 1개의 리뷰만 유지됩니다(재요청 시 갱신).
+      operationId: upsertCourseReview
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: course_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewRequest"
+      responses:
+        "200":
+          description: 리뷰 등록/수정 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          recorded:
+                            type: boolean
+                          review_id:
+                            type: integer
+                          course_bayesian_score:
+                            type: number
+                          rating_count:
+                            type: integer
+        "404":
+          description: 코스를 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpErrorDetail"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+    get:
+      tags: [reviews]
+      summary: 코스 리뷰 목록 조회
+      operationId: listCourseReviews
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: course_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: 이전 응답의 next_cursor(리뷰 id)
+      responses:
+        "200":
+          description: 리뷰 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          summary:
+                            type: object
+                            properties:
+                              bayesian_score:
+                                type: number
+                              avg_score:
+                                type: number
+                                nullable: true
+                              rating_count:
+                                type: integer
+                          reviews:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/Review"
+                          next_cursor:
+                            type: string
+                            nullable: true
+        "404":
+          description: 코스를 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpErrorDetail"
+
+  /v1/courses/{course_id}/reviews/me:
+    delete:
+      tags: [reviews]
+      summary: 내 리뷰 삭제
+      operationId: deleteMyCourseReview
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: course_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: 삭제 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          deleted:
+                            type: boolean
+                            example: true
+        "404":
+          description: 삭제할 리뷰가 없음
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpErrorDetail"
+
+  /v1/places/{place_id}/report:
+    post:
+      tags: [places]
+      summary: 장소 정보 제보 (영업시간/가격대/평점)
+      description: |
+        비로그인 사용자도 이용 가능(IP 기준 하루 10건 레이트리밋).
+        기존 제보가 있으면 갱신, 없으면 신규 반영합니다(평점은 이중 반영 방지).
+      operationId: reportPlace
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: place_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaceReportRequest"
+      responses:
+        "200":
+          description: 제보 반영 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaceReportResponse"
+        "404":
+          description: 장소를 찾을 수 없음(PLACE_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    example: PLACE_NOT_FOUND
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          description: 일일 레이트리밋 초과(RATE_LIMIT_EXCEEDED)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    example: RATE_LIMIT_EXCEEDED
+
+  /v1/users/me:
+    get:
+      tags: [users]
+      summary: 내 프로필 조회
+      operationId: getMe
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 프로필 정보
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/UserProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: 사용자를 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpErrorDetail"
+
+    patch:
+      tags: [users]
+      summary: 내 프로필 수정
+      operationId: updateMe
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdateRequest"
+      responses:
+        "200":
+          description: 수정 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/UserProfile"
+        "400":
+          description: 변경할 내용이 없음(NOTHING_TO_UPDATE)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpErrorDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: 사용자를 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpErrorDetail"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+    delete:
+      tags: [users]
+      summary: 회원 탈퇴 (개인정보 비식별화)
+      description: 리뷰/추천 기록은 통계용으로 남기되 사용자 연결을 해제하고, 계정을 WITHDRAWN 상태로 비식별화합니다.
+      operationId: deleteMe
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 탈퇴 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          deleted:
+                            type: boolean
+                            example: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/users/me/courses:
+    get:
+      tags: [users]
+      summary: 내가 추천받은 코스 목록
+      description: courses.recommend를 통해 내가 요청한 이력이 있는 코스 목록(커서 페이지네이션).
+      operationId: listMyCourses
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 코스 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          courses:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/CourseSummary"
+                          next_cursor:
+                            type: string
+                            nullable: true
+        "400":
+          description: 잘못된 커서(INVALID_CURSOR)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpErrorDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "`/v1/auth/kakao` 또는 `/v1/auth/refresh`에서 발급받은 access_token"
+
+  responses:
+    Unauthorized:
+      description: 로그인이 필요함(UNAUTHORIZED)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/HttpErrorDetail"
+    ValidationError:
+      description: 요청 바디 검증 실패 (FastAPI 기본 422 응답)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    loc:
+                      type: array
+                      items:
+                        type: string
+                    msg:
+                      type: string
+                    type:
+                      type: string
+
+  schemas:
+    # ---------------------------------------------------------------------
+    # Envelope / errors
+    # ---------------------------------------------------------------------
+    SuccessEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+        error:
+          type: object
+          nullable: true
+          example: null
+      required: [success, data, error]
+
+    HttpErrorDetail:
+      type: object
+      description: FastAPI HTTPException 표준 오류 포맷
+      properties:
+        detail:
+          type: object
+          properties:
+            code:
+              type: string
+              example: NOT_FOUND
+            message:
+              type: string
+              example: 코스를 찾을 수 없어요.
+
+    # ---------------------------------------------------------------------
+    # Enums
+    # ---------------------------------------------------------------------
+    ThemeTag:
+      type: string
+      enum:
+        - FOOD
+        - CAFE
+        - BAR
+        - BOARD_GAME
+        - KARAOKE
+        - ARCADE
+        - PARK
+        - CULTURE
+        - SHOPPING
+        - NIGHT_VIEW
+        - MOVIE
+        - ACTIVITY
+
+    BudgetTier:
+      type: string
+      enum:
+        - UNDER_30000
+        - "30000_70000"
+        - "70000_150000"
+        - OVER_150000
+
+    CompanionType:
+      type: string
+      enum: [SOLO, FRIEND, COUPLE, FAMILY]
+
+    GenderType:
+      type: string
+      enum: [MALE, FEMALE, OTHER, UNKNOWN]
+
+    DatingStage:
+      type: string
+      enum: [SOME, EARLY, LONGTERM, UNKNOWN]
+
+    ServedFrom:
+      type: string
+      enum: [LLM, CACHE]
+
+    PlaceStatus:
+      type: string
+      enum: [OPEN, CLOSED]
+
+    # ---------------------------------------------------------------------
+    # Auth
+    # ---------------------------------------------------------------------
+    KakaoLoginRequest:
+      type: object
+      required: [authorization_code, redirect_uri]
+      properties:
+        authorization_code:
+          type: string
+        redirect_uri:
+          type: string
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    AuthTokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        is_new_user:
+          type: boolean
+        user:
+          type: object
+          properties:
+            id:
+              type: integer
+            nickname:
+              type: string
+            profile_image_url:
+              type: string
+              nullable: true
+            preferred_companion_type:
+              $ref: "#/components/schemas/CompanionType"
+
+    # ---------------------------------------------------------------------
+    # Stations
+    # ---------------------------------------------------------------------
+    StationResult:
+      type: object
+      properties:
+        station_id:
+          type: integer
+        name:
+          type: string
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        lines:
+          type: array
+          items:
+            type: string
+          example: ["2", "6"]
+        is_supported:
+          type: boolean
+          default: true
+
+    # ---------------------------------------------------------------------
+    # Courses
+    # ---------------------------------------------------------------------
+    CourseSummary:
+      type: object
+      properties:
+        course_id:
+          type: integer
+        station_id:
+          type: integer
+          nullable: true
+        station_name:
+          type: string
+          nullable: true
+        theme_tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/ThemeTag"
+        budget_tier:
+          $ref: "#/components/schemas/BudgetTier"
+        companion_type:
+          $ref: "#/components/schemas/CompanionType"
+        head_count:
+          type: integer
+          nullable: true
+        bayesian_score:
+          type: number
+        rating_count:
+          type: integer
+        total_walking_distance_km:
+          type: number
+          nullable: true
+        preview_places:
+          type: array
+          items:
+            type: string
+          description: 첫 번째 옵션(option_index=1) 장소명 목록
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    PlaceOption:
+      type: object
+      properties:
+        place_id:
+          type: integer
+        name:
+          type: string
+        category:
+          type: string
+          nullable: true
+          description: 사용자 노출용 한글 카테고리 라벨
+        address:
+          type: string
+          nullable: true
+        lat:
+          type: number
+          nullable: true
+        lng:
+          type: number
+          nullable: true
+        price_range:
+          type: string
+          nullable: true
+        business_hours:
+          type: object
+          nullable: true
+        map_url:
+          type: string
+          nullable: true
+        user_rating_avg:
+          type: number
+          nullable: true
+        user_rating_count:
+          type: integer
+        status:
+          $ref: "#/components/schemas/PlaceStatus"
+        description:
+          type: string
+        walking_distance_from_station_km:
+          type: number
+          nullable: true
+
+    CourseStage:
+      type: object
+      properties:
+        stage_order:
+          type: integer
+        stage_label:
+          type: string
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlaceOption"
+
+    CourseDetail:
+      type: object
+      properties:
+        course_id:
+          type: integer
+        station_id:
+          type: integer
+          nullable: true
+        station_name:
+          type: string
+        theme_tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/ThemeTag"
+        budget_tier:
+          $ref: "#/components/schemas/BudgetTier"
+        companion_type:
+          $ref: "#/components/schemas/CompanionType"
+        head_count:
+          type: integer
+          nullable: true
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/CourseStage"
+        bayesian_score:
+          type: number
+        avg_score:
+          type: number
+          nullable: true
+        rating_count:
+          type: integer
+        is_stale:
+          type: boolean
+          description: 구성 장소 중 30일 이상 미동기화된 항목 존재 여부
+        has_closed:
+          type: boolean
+          description: 구성 장소 중 폐업 상태(CLOSED) 항목 존재 여부
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        og:
+          type: object
+          properties:
+            title:
+              type: string
+            description:
+              type: string
+            image_url:
+              type: string
+              nullable: true
+
+    # ---------------------------------------------------------------------
+    # Recommend
+    # ---------------------------------------------------------------------
+    RecommendRequest:
+      type: object
+      required: [query]
+      properties:
+        station_id:
+          type: integer
+          nullable: true
+          description: 지정 시 자연어에서의 역명 추론을 생략
+        query:
+          type: string
+          description: '자연어 추천 요청 (예: "친구랑 홍대에서 저녁 먹고 놀고 싶어")'
+        exclude_place_ids:
+          type: array
+          items:
+            type: integer
+          default: []
+          description: 재추천 시 제외할 장소 ID 목록 (지정 시 캐시를 건너뜀)
+        parsed_input:
+          type: object
+          nullable: true
+          description: NEEDS_CLARIFICATION 이후 사용자가 보완한 필드를 다시 보낼 때 사용 (지정 시 LLM 분류를 건너뜀)
+          properties:
+            theme_tags:
+              type: array
+              items:
+                type: string
+            station_name:
+              type: string
+            budget_tier:
+              type: string
+            companion_type:
+              type: string
+            head_count:
+              type: integer
+            menu_keyword:
+              type: string
+
+    RecommendCourseData:
+      type: object
+      properties:
+        course_id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        station_name:
+          type: string
+          nullable: true
+        theme_tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/ThemeTag"
+        stages:
+          type: array
+          items:
+            type: object
+            properties:
+              stage_order:
+                type: integer
+              stage_label:
+                type: string
+              options:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    place_id:
+                      type: integer
+                    name:
+                      type: string
+                    category:
+                      type: string
+                      nullable: true
+                    address:
+                      type: string
+                      nullable: true
+                    lat:
+                      type: number
+                      nullable: true
+                    lng:
+                      type: number
+                      nullable: true
+                    business_hours:
+                      type: object
+                      nullable: true
+                    price_range:
+                      type: string
+                      nullable: true
+                    user_rating_avg:
+                      type: number
+                      nullable: true
+                    user_rating_count:
+                      type: integer
+                    map_url:
+                      type: string
+                      nullable: true
+                    thumbnail_url:
+                      type: string
+                      nullable: true
+                    description:
+                      type: string
+                    walking_distance_from_station_km:
+                      type: number
+                      nullable: true
+        similar_top_courses:
+          type: array
+          items:
+            type: object
+        served_from:
+          $ref: "#/components/schemas/ServedFrom"
+        total_walking_distance_km:
+          type: number
+          nullable: true
+
+    NeedsClarificationResponse:
+      type: object
+      description: 자연어 질의에서 역/동행유형/예산대 등 필수 정보를 추론하지 못한 경우
+      properties:
+        status:
+          type: string
+          enum: [NEEDS_CLARIFICATION]
+        partial_parsed_input:
+          type: object
+          properties:
+            theme_tags:
+              type: array
+              items:
+                type: string
+            head_count:
+              type: integer
+            station_name:
+              type: string
+            menu_keyword:
+              type: string
+        missing_fields:
+          type: array
+          items:
+            type: string
+            enum: [station_id, companion_type, budget_tier]
+
+    # ---------------------------------------------------------------------
+    # Reviews
+    # ---------------------------------------------------------------------
+    ReviewRequest:
+      type: object
+      required: [score]
+      properties:
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          multipleOf: 5
+          description: 0~100 사이 5단위 점수
+        comment:
+          type: string
+          nullable: true
+        links:
+          type: array
+          items:
+            type: string
+          default: []
+
+    Review:
+      type: object
+      properties:
+        review_id:
+          type: integer
+        author_name:
+          type: string
+        score:
+          type: integer
+        comment:
+          type: string
+          nullable: true
+        links:
+          type: array
+          items:
+            type: string
+        is_mine:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    # ---------------------------------------------------------------------
+    # Places
+    # ---------------------------------------------------------------------
+    PlaceReportRequest:
+      type: object
+      properties:
+        business_hours_text:
+          type: string
+          nullable: true
+        price_range:
+          type: string
+          nullable: true
+        rating:
+          type: number
+          nullable: true
+          minimum: 1.0
+          maximum: 5.0
+          description: 0.5 단위 평점
+
+    PlaceReportResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            recorded:
+              type: boolean
+            avg_rating:
+              type: number
+              nullable: true
+            rating_count:
+              type: integer
+        error:
+          type: string
+          nullable: true
+
+    # ---------------------------------------------------------------------
+    # Users
+    # ---------------------------------------------------------------------
+    UserProfile:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        nickname:
+          type: string
+        email:
+          type: string
+          nullable: true
+        profile_image_url:
+          type: string
+          nullable: true
+        preferred_companion_type:
+          $ref: "#/components/schemas/CompanionType"
+        preferred_theme_tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/ThemeTag"
+        preferred_budget:
+          $ref: "#/components/schemas/BudgetTier"
+        gender:
+          $ref: "#/components/schemas/GenderType"
+        birth_year:
+          type: integer
+          nullable: true
+        dating_stage:
+          $ref: "#/components/schemas/DatingStage"
+        home_station_id:
+          type: integer
+          nullable: true
+        marketing_agreed:
+          type: boolean
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    UserUpdateRequest:
+      type: object
+      description: 값이 주어진 필드만 갱신됩니다. preferred_theme_tags는 null이면 유지, []면 초기화됩니다.
+      properties:
+        nickname:
+          type: string
+          minLength: 2
+          maxLength: 20
+          nullable: true
+        preferred_companion_type:
+          type: string
+          nullable: true
+        preferred_theme_tags:
+          type: array
+          items:
+            type: string
+          maxItems: 5
+          nullable: true
+        preferred_budget:
+          type: string
+          nullable: true
+        gender:
+          type: string
+          nullable: true
+        birth_year:
+          type: integer
+          nullable: true
+        dating_stage:
+          type: string
+          nullable: true
+        home_station_id:
+          type: integer
+          nullable: true
+        terms_agreed_at:
+          type: string
+          format: date-time
+          nullable: true
+        privacy_agreed_at:
+          type: string
+          format: date-time
+          nullable: true
+        marketing_agreed:
+          type: boolean
+          nullable: true
