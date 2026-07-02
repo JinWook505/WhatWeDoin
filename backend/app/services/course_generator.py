@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.category_labels import place_category_label
 from app.services.llm import LLMMessage, get_llm_provider
 from app.services.llm.base import LLMUnavailableError
 from app.services.place_search import search_candidate_places
@@ -129,8 +130,9 @@ def _build_candidate_prompt(
             else None
         )
         rating_str = f", 별점 {avg_rating}" if avg_rating else ""
+        category_label = place_category_label(p.get("category")) or p.get("category", "")
         lines.append(
-            f"- place_id={p['place_id']} / {p['name']} ({p.get('category', '')}) "
+            f"- place_id={p['place_id']} / {p['name']} ({category_label}) "
             f"/ {p.get('price_range', '가격 미정')}{rating_str}"
         )
     return "\n".join(lines)

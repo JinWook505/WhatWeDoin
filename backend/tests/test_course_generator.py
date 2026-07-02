@@ -7,6 +7,7 @@ from app.services.course_generator import (
     CourseGenerationError,
     GeneratedStage,
     StageOption,
+    _build_candidate_prompt,
     _compute_content_hash,
     _parse_and_validate,
 )
@@ -131,6 +132,21 @@ class TestParseAndValidate:
         )
         assert result is not None
         assert len(result.stages) == 1
+
+
+class TestBuildCandidatePrompt:
+    def test_uses_korean_category_label_not_raw_code(self):
+        """SCRUM-96: raw Kakao category_group_code (e.g. FD6) is meaningless to the LLM;
+        the prompt must send the translated Korean label instead."""
+        candidates = [
+            {"place_id": 1, "name": "노랑저고리 강남점", "category": "FD6",
+             "price_range": "3만원대", "user_rating_sum": 0, "user_rating_count": 0},
+        ]
+        prompt = _build_candidate_prompt(
+            "밥집만 추천해줘", candidates, ["FOOD"], "UNDER_30000", "FAMILY", None
+        )
+        assert "음식점" in prompt
+        assert "FD6" not in prompt
 
 
 class TestGenerateCourse:
