@@ -86,6 +86,20 @@ async def check_daily_quota(db: AsyncSession, user_id: int) -> bool:
 # Idempotency
 # ---------------------------------------------------------------------------
 
+async def acquire_idempotency_lock(db: AsyncSession, user_id: int, idempotency_key: str) -> None:
+    """Serialize concurrent requests sharing the same (user_id, idempotency_key).
+
+    pg_advisory_xact_lock is held until the current transaction commits or
+    rolls back, so a second request with the same key blocks here until the
+    first request's course row is committed, then re-checks idempotency and
+    replays the cached result instead of generating a duplicate course.
+    """
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+        {"lock_key": f"{user_id}:{idempotency_key}"},
+    )
+
+
 async def get_idempotency_result(
     db: AsyncSession,
     user_id: int,
