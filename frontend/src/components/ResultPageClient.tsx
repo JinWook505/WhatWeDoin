@@ -12,6 +12,7 @@ import {
 import ResultClient from "./ResultClient"
 import ClarificationStep from "./ClarificationStep"
 import ErrorFallback from "./ErrorFallback"
+import { incrementUsedCount } from "@/lib/quota"
 import pageStyles from "@/app/result/page.module.css"
 import loadingStyles from "@/app/result/loading.module.css"
 
@@ -49,6 +50,7 @@ export default function ResultPageClient() {
         if (isClarificationResult(res)) {
           setClarification(res)
         } else {
+          incrementUsedCount()
           setData(res.data)
           setDailyRemaining(res.daily_remaining ?? null)
         }
