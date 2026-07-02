@@ -117,10 +117,19 @@ def _build_candidate_prompt(
         f"동반자: {companion_type}",
     ]
     if menu_keyword:
-        lines.append(
-            f"사용자가 명시한 메뉴/음식: {menu_keyword} "
-            f"— 후보 이름에 이 키워드가 포함된 장소를 최우선으로 선택하세요."
-        )
+        has_name_match = any(menu_keyword in p.get("name", "") for p in candidates)
+        if has_name_match:
+            lines.append(
+                f"사용자가 명시한 메뉴/음식: {menu_keyword} "
+                f"— 후보 이름에 이 키워드가 포함된 장소를 최우선으로 선택하세요."
+            )
+        else:
+            lines.append(
+                f"사용자가 '{menu_keyword}'을(를) 언급했지만, 후보 목록에 이름이 정확히 "
+                f"일치하는 장소가 없습니다. 다른 후보를 그 메뉴인 것처럼 단정하지 마세요. "
+                f"stage_label/description에 '{menu_keyword}'을(를) 확정적으로 언급하지 말고, "
+                f"일반적인 식사/술자리 표현으로 설명하세요."
+            )
     if weather:
         lines.append(
             f"현재 날씨: {weather.get('description', '')} "
