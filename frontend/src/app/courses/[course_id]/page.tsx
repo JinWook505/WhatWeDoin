@@ -1,6 +1,7 @@
 import styles from "./page.module.css"
 import ReviewSection from "@/components/ReviewSection"
 import CourseTimeline from "@/components/CourseTimeline"
+import CourseMap from "@/components/CourseMap"
 import { THEME_TAG_KO, BUDGET_TIER_KO, COMPANION_TYPE_KO } from "@/lib/enumOptions"
 import { StageDetail } from "@/lib/api"
 
@@ -82,6 +83,8 @@ export default async function CourseDetailPage({
           </p>
         )}
       </header>
+
+      <CourseMap stages={course.stages} />
 
       <CourseTimeline stages={course.stages} courseId={course.course_id} />
 
