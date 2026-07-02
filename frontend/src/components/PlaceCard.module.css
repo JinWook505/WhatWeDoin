@@ -113,6 +113,7 @@
   color: var(--foreground-muted);
   margin: 0;
   line-height: 1.5;
+  white-space: pre-line;
 }
 
 .noHours {
@@ -123,8 +124,9 @@
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
   margin-top: 4px;
 }
 
@@ -137,6 +139,8 @@
   border-radius: 8px;
   transition: box-shadow 0.2s, transform 0.1s;
   display: inline-block;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .mapLink:hover {
@@ -153,6 +157,8 @@
   cursor: pointer;
   font-family: inherit;
   transition: color 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .reportBtn:hover {
@@ -169,6 +175,8 @@
   font-family: inherit;
   transition: color 0.15s;
   margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .excludeBtn:hover { color: var(--danger-strong); }
@@ -183,6 +191,8 @@
   font-family: inherit;
   transition: color 0.15s;
   margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .includeBtn:hover { opacity: 0.8; }
