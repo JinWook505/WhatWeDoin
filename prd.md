@@ -2,15 +2,16 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | **v2.7** — PRD |
-| 작성일 | 2026-07-01 |
+| 문서 버전 | **v2.8** — PRD |
+| 작성일 | 2026-07-02 |
 | 관련 문서 | 없음  |
 | 범위 | 제품 개요 / 사용자 플로우 / 기능요구(User Story·인수조건) / 비기능요구 / 기술스택 / DB / API / 인증 / 추천엔진 / 보안 / 설정값 |
-| 상태 | MVP 확정. 단일 질의어(자연어) 입력 기반 추천으로 개편(역 수동 선택 UI 제거), 코스는 단계별 복수 대안 구조로 생성 |
+| 상태 | MVP 구현 완료 단계(SCRUM-100 기준 약 97%). 단일 질의어(자연어) 입력 기반 추천, 코스는 단계별 복수 대안 구조로 생성. 리뷰 신고 기능은 미사용 확인되어 제거됨(D-27) |
 
 ### 변경 이력
 | 버전 | 일자 | 변경 |
 |---|---|---|
+| v2.8 | 2026-07-02 | **구현 결과를 반영한 정합화(SCRUM-90~100).** ① **리뷰 신고 기능(`course_review_reports`, `POST /reviews/{id}/report`) 삭제**(D-27) — 프론트엔드 어디에서도 호출하지 않는 죽은 코드로 확인되어 모델·라우터·테이블을 전수 제거(SCRUM-91). D-15/D-19에서 정의했던 신고 기능은 MVP 범위에서 완전히 빠진다. ② **메뉴 키워드 후보 우선순위 + 실시간 카카오 키워드 검색 보강**(D-28) — "치맥"처럼 구체적 메뉴가 언급되면 이름이 일치하는 후보를 최우선 배치하고(SCRUM-97), 오프라인 캐시(`places`)에 일치 후보가 전혀 없으면 카카오 로컬 키워드 API를 실시간 호출해 결과를 즉시 upsert 후 후보 풀에 포함한다(SCRUM-98). 일치 후보가 없을 땐 LLM이 다른 장소를 그 메뉴인 것처럼 단정하지 않도록 프롬프트에 정직성 지침을 추가. ③ **단일 카테고리 요청 시 1단계 코스 허용**(D-29) — "카페만 추천해줘"처럼 테마가 하나로 좁혀진 요청은 억지로 2단계 이상을 채우지 않고 1개 단계로도 코스를 생성(SCRUM-95). ④ `places.theme_tags` 전체 미분류로 테마 필터·메뉴 특화 요청이 무시되던 데이터 문제를 백필 스크립트(`backfill_place_theme_tags.py`)로 해소(SCRUM-96). ⑤ 멱등성 헤더명 불일치로 코스가 중복 생성되던 버그, 로그아웃 시 일일 한도가 초기화되던 버그, 코스 결과 화면 진입 시 FE 일일 카운트가 2회 증가하던 버그를 각각 수정(SCRUM-92/88/99). ⑥ 프론트엔드 라이트/다크 테마 전환 + 데스크탑 반응형 레이아웃 추가, 코스 상세 페이지에 카카오맵·평점·운영시간 노출(SCRUM-89/94). ⑦ 전체 API 엔드포인트 OpenAPI 3.0 명세를 손으로 작성해 `/docs`(Swagger UI)가 FastAPI 자동 생성 스키마 대신 이 명세를 서빙하도록 구성(SCRUM-100). |
 | v2.7 | 2026-07-01 | **코스 생성을 "고정 선형 동선" → "단계(stage)별 복수 대안" 구조로 개편(D-26).** ① 실제 데이트/모임 코스는 식사를 2번, 카페를 2번 가는 식으로 딱딱하게 짜이지 않는다는 사용자 피드백 반영 — 코스를 2~4개의 "단계"(예: 저녁 식사, 카페/디저트, 야외 산책)로 구성하고 각 단계마다 1~3개의 대안 장소를 제시, 사용자가 각 단계에서 하나씩 골라 자신만의 동선을 완성. ② LLM 코스 생성 프롬프트가 현재 날씨(맑음/비 등)를 반영해 우천 시 실내 위주 단계로, 맑을 때는 야외 단계(공원 산책 등)를 포함하도록 구성. ③ `course_places` 스키마: `visit_order` → `stage_order` + `option_index` + `stage_label`, `walking_distance_to_next_km` → `walking_distance_from_station_km`(단계 내 대안들은 병렬 관계라 "다음 장소까지 거리" 개념이 성립하지 않음). ④ `POST /v1/courses/recommend`·`GET /v1/courses/{id}` 응답의 `places[]` 배열 → `stages[].options[]` 구조로 변경. ⑤ `content_hash`는 place_id 정렬 목록이 아니라 단계+옵션 전체 구조를 해시. |
 | v2.6 | 2026-07-01 | **초기 입력을 "역 선택 + 질의어" → "질의어 단일 입력"으로 전면 개편(D-20).** ① 최초 화면의 지도/역 이름 검색 UI 제거 — 사용자는 "어떻게 놀고 싶은지" 한 문장만 입력. ② 질의어 안의 지명·동네 언급을 LLM이 추출해 최근접 지원 역으로 자동 매핑(`station_name` → `station_id` resolution), GPS는 계속 미사용(D-20은 D-1 위치 정책 유지, 수집 방식만 변경). ③ 지명이 전혀 언급되지 않거나 분류가 불충분하면 **US-A4(추가 입력 요청 Step)** 로 보완 — 기존 SCRUM-60 "PRD 비정합" 플래그를 본 버전에서 공식 해소하고 `missing_fields`에 `station_id`를 포함하도록 확장. ④ US-A1(지도 선택)·US-A2(역 이름 검색)는 메인 화면 1차 진입점에서 **US-A4 폴백 전용**으로 격하(P0→P1). ⑤ `POST /v1/courses/recommend` 요청에서 `station_id`는 선택값으로 전환(질의어에서 해석 실패 시에만 클라이언트가 값 채움). ⑥ `GET /v1/recommend/placeholder`는 `station_id` 없이도 동작(서울 기본 좌표 날씨로 폴백). |
 | v2.5 | 2026-06-30 | **SCRUM-70 법무 게이트 범위 확정 + 사용자 제보 MVP 정책 수정.** ① SCRUM-70 범위 확정: 카카오 로컬 REST API 기본 메타(이름·주소·카테고리·좌표·전화번호) 사용은 이용약관 허용 범위 → 법무 게이트 대상은 **크롤링(상세 페이지 스크래핑)에 한함**. ② `business_hours`(영업시간)·`place_rating`(별점)은 카카오 API 미제공 → MVP에서 **사용자 직접 입력으로 수집**(playwright 검증 없는 단순 제보). ③ `places` 테이블에 `user_rating_sum`·`user_rating_count` 컬럼 추가. ④ `POST /v1/places/{place_id}/report` 엔드포인트 추가(영업시간·별점·가격 사용자 제보). ⑤ Out 섹션에서 "영업시간 제보 로직" 표현 수정: 단순 사용자 입력은 MVP 포함, playwright 검증 파이프라인만 V2 유지. |
@@ -87,6 +88,9 @@
 | **D-24** | **코스 목록/상세 화면은 enum 코드 대신 한국어 라벨로 표시** | 2026-07-01. `theme_tags`/`budget_tier`/`companion_type`는 API 계약상 여전히 D-14/enums.py의 코드값을 그대로 주고받되(DB/API 변경 없음), FE가 원시 코드를 사용자에게 그대로 노출하던 버그를 발견해 온보딩(SCRUM-9)에서 이미 쓰던 한글 라벨 매핑을 `frontend/src/lib/enumOptions.ts`로 단일화. |
 | **D-25** | **`GET /v1/users/me/courses`(내가 생성한 코스) 신규 추가** | 2026-07-01. `courses`는 콘텐츠 해시로 중복 제거되는 공유 엔티티라 소유자 컬럼이 없다(6.2.4). "내 코스"는 `recommendation_requests.user_id`(D-21)를 통해 역참조해 사용자가 요청한 적 있는 코스 집합으로 정의. US-D3 신설. |
 | **D-26** | **코스 생성을 고정 선형 동선(1 place = 1 visit_order) → 단계(stage)별 복수 대안(1 stage = N개 옵션) 구조로 개편** | 2026-07-01. 식사·카페를 각각 2번씩 방문하는 식의 고정 동선은 특정 테마 투어가 아닌 이상 실제 코스 사용 패턴과 맞지 않는다는 피드백. 코스를 2~4개 단계로 나누고 각 단계에 1~3개 대안 장소를 배정, 사용자가 단계마다 하나를 선택하는 구조로 변경. LLM 프롬프트는 날씨(우천 시 실내 위주/맑을 때 야외 단계 포함 가능)를 반영. `course_places`의 `visit_order` → `stage_order`+`option_index`+`stage_label`, `walking_distance_to_next_km` → `walking_distance_from_station_km`(단계 내 대안은 병렬이라 "다음 장소 거리" 개념이 성립하지 않음). API 응답 `places[]` → `stages[].options[]`. `content_hash`도 단계+옵션 전체 구조 기준으로 변경. |
+| **D-27** | **리뷰 신고 기능(`course_review_reports`, `POST /reviews/{id}/report`) 완전 제거** | 2026-07-02(SCRUM-91). D-15에서 도입했던 리뷰 신고 기능이 프론트엔드 어디에서도 호출되지 않는 죽은 코드로 확인됨 — 모델(`CourseReviewReport`)·`ReportReason` enum·라우터·`course_review_reports` 테이블/`report_reason` enum 타입(Alembic 0008)을 전수 삭제. 부적절 리뷰 대응은 현재 MVP 범위 밖(운영자 수동 대응이 필요해지면 V2에서 재설계). 6.2.6b는 이력 보존 목적으로만 남겨두고 "삭제됨"으로 표기한다. |
+| **D-28** | **메뉴 키워드 요청 시 이름 일치 후보 우선 배치 + 실시간 카카오 키워드 검색으로 커버리지 보강** | 2026-07-02(SCRUM-97/98). "치맥"→"치킨"처럼 `menu_keyword`가 추출되면 오프라인 캐시(`places`)에서 이름이 일치하는 후보를 우선 정렬(`ORDER BY (name ILIKE %kw%) DESC, distance_m`). 일치 후보가 하나도 없으면 카카오 로컬 키워드 API를 그 자리에서 호출해 결과를 `places`에 upsert하고 이번 요청의 후보 풀에도 즉시 포함(`kakao_places.search_kakao_keyword_live`). 일치 후보가 없는 채로 LLM에 후보를 넘길 땐 시스템 프롬프트에 "다른 후보를 그 메뉴인 것처럼 단정하지 말 것"을 명시해 정직성을 확보. |
+| **D-29** | **단일 카테고리 요청은 코스가 1개 단계로만 생성되어도 허용** | 2026-07-02(SCRUM-95). `theme_tags`가 1개로 좁혀진 요청(예: "카페만 추천해줘")에 한해 최소 단계 수를 2 → 1로 완화. 다른 활동 유형을 억지로 끼워넣지 않도록 LLM 시스템 프롬프트에 단일 카테고리 전용 규칙을 추가(`course_generator._build_system_prompt(single_category=True)`). 복수 테마 요청·기본 "코스 추천" 요청은 기존과 동일하게 2~4단계 규칙(D-26)을 유지. |
 
 ---
 
@@ -605,30 +609,33 @@ CREATE INDEX idx_reviews_course ON course_reviews (course_id, created_at DESC);
 > - **place 단위 리뷰 → V2**: 장소 단위 리뷰(`place_reviews`)는 V2로 이관. MVP에서는 코스 단위 리뷰만 제공. 장소 제외는 재생성 시 `exclude_place_ids`(US-B3)로 대체.
 > - **리뷰 링크**: 저장만 하며 도메인 화이트리스트·안전성 검사 없음(D-15). 클라이언트에서 `rel="nofollow noopener"` 처리.
 
-#### 6.2.6b `course_review_reports` — 리뷰 신고 (D-15)
-```sql
-CREATE TYPE report_reason AS ENUM (
-  'SPAM',          -- 스팸/광고
-  'INAPPROPRIATE', -- 불건전/욕설
-  'WRONG_INFO',    -- 잘못된 정보
-  'OTHER'
-);
-
-CREATE TABLE course_review_reports (
-    id          BIGSERIAL PRIMARY KEY,
-    review_id   BIGINT NOT NULL REFERENCES course_reviews(id) ON DELETE CASCADE,
-    user_id     BIGINT REFERENCES users(id),              -- 로그인 신고
-    ip_hash     VARCHAR(64),                              -- 비로그인 신고
-    reason      report_reason NOT NULL,
-    comment     TEXT,                                     -- 추가 설명(선택)
-    created_at  TIMESTAMPTZ DEFAULT now(),
-    CONSTRAINT chk_reporter CHECK (user_id IS NOT NULL OR ip_hash IS NOT NULL)
-);
-CREATE UNIQUE INDEX uq_report_user ON course_review_reports (review_id, user_id) WHERE user_id IS NOT NULL;
-CREATE UNIQUE INDEX uq_report_ip   ON course_review_reports (review_id, ip_hash) WHERE user_id IS NULL;
-```
-> - **운영 처리**: 신고 누적 수(`report_count`, 별도 집계 또는 COUNT 쿼리)가 임계치(`report.hide_threshold`, `app_config`)를 넘으면 관리자 검토 대기 상태로 표시. 자동 숨김은 V2.
-> - 신고 자체는 공개 정책에 영향 없음(코스 즉시 공개 D-10 유지). 운영자가 수동 비공개 처리.
+#### 6.2.6b ~~`course_review_reports` — 리뷰 신고 (D-15)~~ — **삭제됨(D-27, 2026-07-02)**
+> **SCRUM-91**: 아래 테이블·엔드포인트는 프론트엔드 어디에서도 호출되지 않는 죽은 코드로 확인되어 모델(`CourseReviewReport`)·`ReportReason` enum·라우터·Alembic 마이그레이션(0008)까지 전수 삭제했다. 이 섹션은 D-15 결정의 이력을 남기기 위해서만 보존한다. 부적절 리뷰 신고·자동 숨김이 다시 필요해지면 V2에서 별도 스토리로 재설계할 것.
+>
+> <details><summary>삭제 전 스키마(참고용)</summary>
+>
+> ```sql
+> CREATE TYPE report_reason AS ENUM (
+>   'SPAM',          -- 스팸/광고
+>   'INAPPROPRIATE', -- 불건전/욕설
+>   'WRONG_INFO',    -- 잘못된 정보
+>   'OTHER'
+> );
+>
+> CREATE TABLE course_review_reports (
+>     id          BIGSERIAL PRIMARY KEY,
+>     review_id   BIGINT NOT NULL REFERENCES course_reviews(id) ON DELETE CASCADE,
+>     user_id     BIGINT REFERENCES users(id),              -- 로그인 신고
+>     ip_hash     VARCHAR(64),                              -- 비로그인 신고
+>     reason      report_reason NOT NULL,
+>     comment     TEXT,                                     -- 추가 설명(선택)
+>     created_at  TIMESTAMPTZ DEFAULT now(),
+>     CONSTRAINT chk_reporter CHECK (user_id IS NOT NULL OR ip_hash IS NOT NULL)
+> );
+> CREATE UNIQUE INDEX uq_report_user ON course_review_reports (review_id, user_id) WHERE user_id IS NOT NULL;
+> CREATE UNIQUE INDEX uq_report_ip   ON course_review_reports (review_id, ip_hash) WHERE user_id IS NULL;
+> ```
+> </details>
 
 #### 6.2.7 `course_cache`
 ```sql
@@ -930,17 +937,7 @@ DELETE /v1/courses/{course_id}/reviews/me    // 내(또는 내 IP) 리뷰 삭제
 - 등록/수정/삭제 시 `courses.rating_count`/`rating_sum`/`bayesian_score`를 같은 트랜잭션에서 갱신(D-11).
 - 리뷰 링크는 `rel="nofollow noopener"` 처리. 도메인 검사 없음(D-15).
 
-```
-POST /v1/courses/{course_id}/reviews/{review_id}/report    // 리뷰 신고 (D-15)
-```
-```json
-// Request
-{ "reason": "SPAM", "comment": "광고성 링크가 포함되어 있어요." }
-// Response
-{ "success": true, "data": { "recorded": true }, "error": null }
-```
-- 비로그인 허용(IP 기준). 동일 신원의 동일 리뷰 중복 신고는 `ON CONFLICT DO NOTHING`.
-- 신고 누적이 `report.hide_threshold`(기본 5)를 넘으면 관리자 검토 대기. 자동 숨김은 V2(D-15/D-19).
+> **삭제됨(D-27)**: 구 `POST /v1/courses/{course_id}/reviews/{review_id}/report`(리뷰 신고)는 미사용 죽은 코드로 확인되어 2026-07-02 제거되었다(SCRUM-91). 6.2.6b 참고.
 
 ### 7.6 POST /v1/courses/{course_id}/visit-survey — 사후 방문 설문 (P2)
 ```json
