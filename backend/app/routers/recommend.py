@@ -318,6 +318,7 @@ async def recommend(
         station_id,
         theme_tags=theme_tags,
         exclude_place_ids=req.exclude_place_ids or None,
+        menu_keyword=classification.menu_keyword,
     )
     if not candidates:
         raise HTTPException(
@@ -336,6 +337,7 @@ async def recommend(
             query_text=req.query,
             exclude_place_ids=req.exclude_place_ids or None,
             pre_fetched_candidates=candidates,
+            menu_keyword=classification.menu_keyword,
         )
     except CourseGenerationError as e:
         raise HTTPException(
@@ -690,4 +692,5 @@ def _build_classification_from_parsed_input(data: dict) -> "QueryClassification"
         budget_tier=budget_tier,
         companion_type=companion_type,
         head_count=head_count,
+        menu_keyword=data.get("menu_keyword") or None,
     )

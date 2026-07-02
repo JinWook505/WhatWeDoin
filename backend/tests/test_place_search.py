@@ -34,7 +34,7 @@ class TestSearchCandidatePlaces:
         from app.services.place_search import search_candidate_places, _MIN_CANDIDATES
 
         call_count = 0
-        async def fake_query(session, station_id, radius_km, theme_tags, exclude_place_ids, limit):
+        async def fake_query(session, station_id, radius_km, theme_tags, exclude_place_ids, limit, menu_keyword=None):
             nonlocal call_count
             call_count += 1
             if radius_km <= 5.0:
@@ -52,7 +52,7 @@ class TestSearchCandidatePlaces:
         from app.services.place_search import search_candidate_places
 
         call_count = 0
-        async def fake_query(session, station_id, radius_km, theme_tags, exclude_place_ids, limit):
+        async def fake_query(session, station_id, radius_km, theme_tags, exclude_place_ids, limit, menu_keyword=None):
             nonlocal call_count
             call_count += 1
             return [{"place_id": i} for i in range(10)]
@@ -61,3 +61,38 @@ class TestSearchCandidatePlaces:
             await search_candidate_places(MagicMock(), station_id=1)
 
         assert call_count == 1
+
+    async def test_menu_keyword_forwarded_to_query(self):
+        """SCRUM-97: menu_keyword must reach every _query call (incl. retries)."""
+        from app.services.place_search import search_candidate_places
+
+        seen_keywords = []
+
+        async def fake_query(session, station_id, radius_km, theme_tags, exclude_place_ids, limit, menu_keyword=None):
+            seen_keywords.append(menu_keyword)
+            return [{"place_id": i} for i in range(10)]
+
+        with patch("app.services.place_search._query", side_effect=fake_query):
+            await search_candidate_places(MagicMock(), station_id=1, menu_keyword="치킨")
+
+        assert seen_keywords == ["치킨"]
+
+    async def test_menu_keyword_boosts_name_match_in_order_clause(self, mock_session):
+        from app.services.place_search import search_candidate_places
+
+        await search_candidate_places(mock_session, station_id=1, menu_keyword="치킨")
+
+        sql_text = str(mock_session.execute.call_args.args[0])
+        params = mock_session.execute.call_args.args[1]
+        assert "ILIKE" in sql_text
+        assert params["menu_kw"] == "%치킨%"
+
+    async def test_no_menu_keyword_omits_ilike_clause(self, mock_session):
+        from app.services.place_search import search_candidate_places
+
+        await search_candidate_places(mock_session, station_id=1)
+
+        sql_text = str(mock_session.execute.call_args.args[0])
+        params = mock_session.execute.call_args.args[1]
+        assert "ILIKE" not in sql_text
+        assert "menu_kw" not in params
