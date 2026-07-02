@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_db as get_session
 from app.core.deps import get_current_user_optional, require_current_user
 from app.services.cache_ratelimit import (
+    acquire_idempotency_lock,
     check_daily_quota,
     get_course_cache,
     get_idempotency_result,
@@ -192,28 +193,21 @@ async def recommend(
     current_user: dict = Depends(require_current_user),
 ):
     user_id: int = current_user["id"]
-    idempotency_key = request.headers.get("X-Idempotency-Key")
+    idempotency_key = request.headers.get("Idempotency-Key")
 
-    # 1. Idempotency check — return previous result if same key used
+    # 1. Idempotency check — acquire an advisory lock first so a near-simultaneous
+    #    duplicate request (e.g. React effect double-invoke) blocks here until the
+    #    first request commits its course, then replays that result instead of
+    #    generating a second one.
     if idempotency_key:
+        await acquire_idempotency_lock(session, user_id, idempotency_key)
         cached_course_id = await get_idempotency_result(session, user_id, idempotency_key)
         if cached_course_id is not None:
             cached = await _build_response_from_course_id(session, cached_course_id, served_from="CACHE")
             if cached:
                 return {"success": True, "data": cached, "error": None}
 
-    # 2. Daily quota check (only LLM calls count)
-    allowed = await check_daily_quota(session, user_id)
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "code": "QUOTA_EXCEEDED",
-                "message": "오늘 추천 횟수(3회)를 모두 사용했어요. KST 자정에 초기화됩니다.",
-            },
-        )
-
-    # 3. Classify (skip when FE provides pre-filled parsed_input after NEEDS_CLARIFICATION)
+    # 2. Classify (skip when FE provides pre-filled parsed_input after NEEDS_CLARIFICATION)
     if req.parsed_input is not None:
         classification = _build_classification_from_parsed_input(req.parsed_input)
     else:
@@ -259,7 +253,7 @@ async def recommend(
         else "COUPLE"
     )
 
-    # 4. Resolve station (D-20: location_mention → nearest supported station;
+    # 3. Resolve station (D-20: location_mention → nearest supported station;
     #    unresolved falls back to NEEDS_CLARIFICATION instead of a hard error)
     station_id = req.station_id
     station_name_resolved: str | None = classification.station_name
@@ -287,7 +281,9 @@ async def recommend(
         station_id = station_row["station_id"]
         station_name_resolved = station_row["name"]
 
-    # 5. Cache check (skip if exclude_place_ids specified — different context)
+    # 4. Cache check (skip if exclude_place_ids specified — different context).
+    #    Runs before the daily quota check so a cache hit is always free, even
+    #    for a user who has exhausted today's LLM quota.
     cache_key = make_cache_key(station_id, req.query)
     if not req.exclude_place_ids:
         cache_hit = await get_course_cache(session, cache_key)
@@ -304,6 +300,17 @@ async def recommend(
             await session.commit()
             cache_hit["served_from"] = "CACHE"
             return {"success": True, "data": cache_hit, "error": None}
+
+    # 5. Daily quota check (only LLM calls count)
+    allowed = await check_daily_quota(session, user_id)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "QUOTA_EXCEEDED",
+                "message": "오늘 추천 횟수(3회)를 모두 사용했어요. KST 자정에 초기화됩니다.",
+            },
+        )
 
     # 6. Fetch candidates
     candidates = await search_candidate_places(

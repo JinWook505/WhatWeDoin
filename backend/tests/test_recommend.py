@@ -200,15 +200,15 @@ async def test_recommend_parsed_input_station_name_resolves_station():
     otherwise a station resolved on the first pass gets dropped on resubmit."""
     mock_session = _make_session()
 
-    quota_row = MagicMock()
-    quota_row.mappings.return_value.first.return_value = {"cnt": 0}
     resolved_station = MagicMock()
     resolved_station.mappings.return_value.first.return_value = {
         "station_id": 127, "name": "인천공항1터미널",
     }
     no_cache_hit = MagicMock()
     no_cache_hit.mappings.return_value.first.return_value = None
-    mock_session.execute = AsyncMock(side_effect=[quota_row, resolved_station, no_cache_hit])
+    quota_row = MagicMock()
+    quota_row.mappings.return_value.first.return_value = {"cnt": 0}
+    mock_session.execute = AsyncMock(side_effect=[resolved_station, no_cache_hit, quota_row])
     mock_session.commit = AsyncMock()
     app.dependency_overrides[get_db] = lambda: mock_session
     app.dependency_overrides[require_current_user] = lambda: {
@@ -237,6 +237,112 @@ async def test_recommend_parsed_input_station_name_resolves_station():
 
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "NO_CANDIDATES"
+
+
+@pytest.mark.asyncio
+async def test_recommend_idempotency_replay_skips_generation():
+    """SCRUM-92 regression: a request carrying an Idempotency-Key that already has a
+    committed course must replay that course, not classify/generate a new one."""
+    mock_session = _make_session()
+
+    lock_result = MagicMock()
+    idempotency_hit = MagicMock()
+    idempotency_hit.mappings.return_value.first.return_value = {"course_id": 42}
+    course_result = MagicMock()
+    course_result.mappings.return_value.first.return_value = {
+        "course_id": 42, "theme_tags": ["FOOD"], "station_id": 1,
+        "total_walking_distance_km": 1.2, "station_name": "홍대입구",
+    }
+    place_result = MagicMock()
+    place_result.mappings.return_value.all.return_value = [
+        {
+            "stage_order": 1, "option_index": 1, "stage_label": "식사/카페",
+            "walking_distance_from_station_km": 0.1,
+            "place_id": 1, "name": "카페A", "category": "CAFE", "address": "서울",
+            "lat": 37.5, "lng": 127.0,
+            "business_hours": None, "price_range": "1만원대",
+            "user_rating_sum": 10, "user_rating_count": 5,
+            "map_url": None, "thumbnail_url": None, "description": "커피 한 잔",
+        },
+    ]
+    mock_session.execute = AsyncMock(
+        side_effect=[lock_result, idempotency_hit, course_result, place_result]
+    )
+
+    app.dependency_overrides[get_db] = lambda: mock_session
+    app.dependency_overrides[require_current_user] = lambda: {
+        "id": 1, "preferred_budget": None, "preferred_companion_type": None, "preferred_theme_tags": [],
+    }
+
+    with patch(
+        "app.routers.recommend.classify_query",
+        AsyncMock(side_effect=AssertionError("must not classify on idempotency replay")),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/v1/courses/recommend",
+                json={"station_id": 1, "query": "홍대에서 맛있는 거 먹고 카페 가고 싶어"},
+                headers={"Idempotency-Key": "test-key-123"},
+            )
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["course_id"] == 42
+    assert body["data"]["served_from"] == "CACHE"
+
+    lock_call = mock_session.execute.call_args_list[0]
+    assert "pg_advisory_xact_lock" in str(lock_call.args[0])
+    assert lock_call.args[1] == {"lock_key": "1:test-key-123"}
+
+
+@pytest.mark.asyncio
+async def test_recommend_cache_hit_ignores_daily_quota():
+    """SCRUM-92 regression: cache hits must be served even after the daily quota is
+    exhausted — the ordering bug previously ran the quota check before the cache check."""
+    mock_session = _make_session()
+
+    cache_row = MagicMock()
+    cached_course = {
+        "course_id": 99, "title": "캐시된 코스", "description": "d",
+        "theme_tags": ["FOOD"], "stages": [], "served_from": "LLM",
+    }
+    cache_row.mappings.return_value.first.return_value = {"result": cached_course}
+    mock_session.execute = AsyncMock(side_effect=[cache_row, MagicMock()])
+    mock_session.commit = AsyncMock()
+
+    app.dependency_overrides[get_db] = lambda: mock_session
+    app.dependency_overrides[require_current_user] = lambda: {
+        "id": 1, "preferred_budget": None, "preferred_companion_type": None, "preferred_theme_tags": [],
+    }
+
+    classification = QueryClassification(
+        theme_tags=[ThemeTag.FOOD],
+        budget_tier=BudgetTier.UNDER_30000,
+        companion_type=CompanionType.COUPLE,
+        head_count=2,
+    )
+
+    with (
+        patch("app.routers.recommend.classify_query", AsyncMock(return_value=classification)),
+        patch(
+            "app.routers.recommend.check_daily_quota",
+            AsyncMock(side_effect=AssertionError("quota check must not run before cache check")),
+        ),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/v1/courses/recommend",
+                json={"station_id": 1, "query": "홍대에서 맛있는 거 먹고 카페 가고 싶어"},
+            )
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["served_from"] == "CACHE"
+    assert body["data"]["course_id"] == 99
 
 
 @pytest.mark.asyncio
