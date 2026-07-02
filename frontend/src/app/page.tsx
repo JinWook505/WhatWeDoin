@@ -38,6 +38,7 @@ export default function Home() {
     <div className={styles.page}>
       <div className={styles.blob1} aria-hidden="true" />
       <div className={styles.blob2} aria-hidden="true" />
+      <div className={styles.blob3} aria-hidden="true" />
       <main className={styles.main}>
         <header className={styles.header}>
           <div className={styles.topBar}>

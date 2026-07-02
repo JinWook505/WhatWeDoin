@@ -3,8 +3,8 @@
   flex-direction: column;
   gap: 1rem;
   padding: 1.25rem;
-  background: var(--background);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: var(--overlay-soft);
+  border: 1px solid var(--border);
   border-radius: 16px;
 }
 
@@ -32,7 +32,7 @@
   width: 100%;
   height: 6px;
   border-radius: 3px;
-  background: #e5e7eb;
+  background: var(--overlay-strong);
   outline: none;
   cursor: pointer;
 }
@@ -57,29 +57,29 @@
   display: flex;
   justify-content: space-between;
   font-size: 0.72rem;
-  color: #9ca3af;
+  color: var(--foreground-muted);
 }
 
 .textarea {
   width: 100%;
   padding: 0.75rem;
-  border: 1px solid rgba(0,0,0,0.1);
+  border: 1px solid var(--border-strong);
   border-radius: 10px;
   font-size: 0.9rem;
   font-family: inherit;
   resize: vertical;
-  background: #fafaf9;
-  color: #1a1a1a;
+  background: var(--overlay-soft);
+  color: var(--foreground);
   box-sizing: border-box;
 }
 
 .textarea::placeholder {
-  color: #9ca3af;
+  color: var(--foreground-muted);
 }
 
 .textarea:focus {
   outline: none;
-  border-color: rgba(0,0,0,0.25);
+  border-color: var(--neon-purple);
 }
 
 .linkSection {
@@ -96,18 +96,18 @@
 .linkInput {
   flex: 1;
   padding: 0.6rem 0.75rem;
-  border: 1px solid rgba(0,0,0,0.1);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   font-size: 0.85rem;
-  background: #fafaf9;
-  color: #1a1a1a;
+  background: var(--overlay-soft);
+  color: var(--foreground);
 }
 
 .linkInput::placeholder {
-  color: #9ca3af;
+  color: var(--foreground-muted);
 }
 
-.linkInput:focus { outline: none; border-color: rgba(0,0,0,0.25); }
+.linkInput:focus { outline: none; border-color: var(--neon-purple); }
 
 .linkAddBtn {
   padding: 0.6rem 1rem;
@@ -127,7 +127,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
-  background: #f3f4f6;
+  background: var(--overlay-mid);
   border-radius: 8px;
   font-size: 0.8rem;
 }
@@ -137,7 +137,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #4b5563;
+  color: var(--foreground-subtle);
 }
 
 .linkDel {
@@ -145,14 +145,14 @@
   border: none;
   cursor: pointer;
   font-size: 1rem;
-  color: #9ca3af;
+  color: var(--foreground-muted);
   padding: 0;
   line-height: 1;
 }
 
 .error {
   font-size: 0.85rem;
-  color: #ef4444;
+  color: var(--danger);
   margin: 0;
 }
 
@@ -165,7 +165,7 @@
 .cancelBtn {
   padding: 0.65rem 1.25rem;
   background: transparent;
-  border: 1px solid rgba(0,0,0,0.15);
+  border: 1px solid var(--border-strong);
   border-radius: 10px;
   font-size: 0.9rem;
   cursor: pointer;

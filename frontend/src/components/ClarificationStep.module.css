@@ -8,6 +8,12 @@
   gap: 24px;
 }
 
+@media (min-width: 900px) {
+  .container {
+    max-width: 560px;
+  }
+}
+
 .title {
   font-size: 28px;
   font-weight: 800;
@@ -47,7 +53,7 @@
   padding: 10px 16px;
   border-radius: 999px;
   border: 1.5px solid var(--border-strong);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--overlay-soft);
   color: var(--foreground-muted);
   font-size: 14px;
   font-weight: 600;
@@ -69,7 +75,7 @@
 
 .error {
   font-size: 13px;
-  color: #f87171;
+  color: var(--danger);
   margin: 0;
 }
 

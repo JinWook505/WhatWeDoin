@@ -22,6 +22,23 @@
   color: var(--foreground-muted);
 }
 
+@media (min-width: 900px) {
+  .page {
+    max-width: 760px;
+    padding: 48px 32px 100px;
+  }
+
+  .centered {
+    max-width: 760px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .page {
+    max-width: 860px;
+  }
+}
+
 .header {
   display: flex;
   flex-direction: column;
@@ -132,7 +149,7 @@
 
 .errorDetail {
   font-size: 13px;
-  color: #f87171;
+  color: var(--danger);
   margin: 0;
 }
 

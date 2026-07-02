@@ -1,7 +1,7 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--modal-overlay);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -21,6 +21,7 @@
   flex-direction: column;
   gap: 16px;
   animation: slideUp 0.2s ease;
+  box-shadow: var(--shadow-modal);
 }
 
 @keyframes slideUp {
@@ -52,9 +53,9 @@
 
 .error {
   font-size: 13px;
-  color: #ef4444;
+  color: var(--danger);
   text-align: center;
-  background: rgba(239, 68, 68, 0.08);
+  background: var(--danger-bg);
   border-radius: 8px;
   padding: 10px;
   margin: 0;
@@ -88,7 +89,7 @@
 .deleteBtn {
   flex: 1;
   padding: 13px;
-  background: #ef4444;
+  background: var(--danger-strong);
   border: none;
   border-radius: 12px;
   color: #fff;
@@ -100,7 +101,7 @@
 }
 
 .deleteBtn:hover:not(:disabled) {
-  background: #dc2626;
+  background: var(--danger);
 }
 
 .deleteBtn:disabled {

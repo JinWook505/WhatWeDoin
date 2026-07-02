@@ -17,7 +17,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(18, 18, 18, 0.85);
+  background: var(--map-loading-overlay);
   color: var(--foreground-muted);
   font-size: 14px;
   border-radius: 16px;
@@ -30,7 +30,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--overlay-soft);
   border: 1.5px solid var(--border-strong);
   border-radius: 16px;
   color: var(--foreground-muted);

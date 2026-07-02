@@ -102,7 +102,7 @@
 .regenBtn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .error {
-  color: #f87171;
+  color: var(--danger);
   font-size: 13px;
   margin-top: 12px;
   text-align: center;
@@ -112,7 +112,7 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--modal-overlay);
   display: flex;
   align-items: center;
   justify-content: center;

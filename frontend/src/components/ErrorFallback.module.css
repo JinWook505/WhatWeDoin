@@ -23,17 +23,17 @@
 
 .code {
   font-size: 0.78rem;
-  color: #9ca3af;
+  color: var(--foreground-muted);
   font-family: monospace;
   margin: 0;
-  background: #f3f4f6;
+  background: var(--overlay-mid);
   padding: 0.2rem 0.6rem;
   border-radius: 6px;
 }
 
 .sub {
   font-size: 0.9rem;
-  color: #6b7280;
+  color: var(--foreground-subtle);
   margin: 0;
   max-width: 320px;
   line-height: 1.5;
@@ -63,7 +63,7 @@
 
 .homeLink {
   font-size: 0.88rem;
-  color: #9ca3af;
+  color: var(--foreground-muted);
   text-decoration: none;
 }
 

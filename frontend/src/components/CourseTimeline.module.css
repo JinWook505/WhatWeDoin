@@ -14,7 +14,7 @@
   gap: 8px;
   font-size: 14px;
   font-weight: 700;
-  color: var(--foreground, #f0f0f0);
+  color: var(--foreground);
   margin: 0 0 10px;
 }
 
@@ -23,8 +23,8 @@
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 100px;
-  background: rgba(168, 85, 247, 0.15);
-  color: #c084fc;
+  background: var(--tag-purple-bg);
+  color: var(--tag-purple-text);
 }
 
 .optionsRow {
