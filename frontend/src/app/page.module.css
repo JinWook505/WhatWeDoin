@@ -25,7 +25,7 @@
   left: -200px;
   width: 520px;
   height: 520px;
-  background: radial-gradient(circle, rgba(168, 85, 247, 0.14) 0%, transparent 68%);
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.16) 0%, transparent 68%);
   border-radius: 50%;
   pointer-events: none;
 }
@@ -36,19 +36,48 @@
   right: -150px;
   width: 420px;
   height: 420px;
-  background: radial-gradient(circle, rgba(236, 72, 153, 0.1) 0%, transparent 68%);
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.12) 0%, transparent 68%);
   border-radius: 50%;
   pointer-events: none;
 }
 
+.blob3 {
+  position: absolute;
+  top: 30%;
+  right: -260px;
+  width: 480px;
+  height: 480px;
+  background: radial-gradient(circle, rgba(249, 115, 22, 0.09) 0%, transparent 68%);
+  border-radius: 50%;
+  pointer-events: none;
+  display: none;
+}
+
 .main {
   width: 100%;
-  max-width: 480px;
+  max-width: var(--max-w-form);
   display: flex;
   flex-direction: column;
   gap: 48px;
   position: relative;
   z-index: 1;
+}
+
+@media (min-width: 900px) {
+  .blob3 {
+    display: block;
+  }
+
+  .main {
+    max-width: 560px;
+    gap: 56px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .main {
+    max-width: 620px;
+  }
 }
 
 .header {
@@ -81,7 +110,7 @@
   letter-spacing: -2.5px;
   line-height: 1.05;
   margin: 0;
-  background: linear-gradient(135deg, #ffffff 0%, #c084fc 40%, #ec4899 70%, #f97316 100%);
+  background: linear-gradient(135deg, var(--title-gradient-start) 0%, #c084fc 40%, #ec4899 70%, #f97316 100%);
   background-size: 200% 200%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -124,7 +153,7 @@
   border-radius: 14px;
   font-size: 15px;
   font-family: inherit;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--overlay-soft);
   color: var(--foreground);
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
@@ -134,7 +163,7 @@
 }
 
 .textarea::placeholder {
-  color: rgba(240, 240, 240, 0.2);
+  color: var(--placeholder);
   line-height: 1.65;
 }
 
@@ -171,11 +200,11 @@
 }
 
 .button:disabled {
-  opacity: 0.25;
+  opacity: 0.4;
   cursor: not-allowed;
   animation: none;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(240, 240, 240, 0.4);
+  background: var(--overlay-strong);
+  color: var(--foreground-muted);
 }
 
 .buttonLoading {
@@ -184,7 +213,7 @@
   justify-content: center;
   gap: 8px;
   opacity: 0.7 !important;
-  background: rgba(255, 255, 255, 0.08) !important;
+  background: var(--overlay-strong) !important;
   animation: none !important;
 }
 

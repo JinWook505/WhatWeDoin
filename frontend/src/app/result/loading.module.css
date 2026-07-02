@@ -23,6 +23,18 @@
   animation: fadeIn 0.3s ease;
 }
 
+@media (min-width: 900px) {
+  .container {
+    max-width: 760px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .container {
+    max-width: 860px;
+  }
+}
+
 .spinner {
   width: 52px;
   height: 52px;

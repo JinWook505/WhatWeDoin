@@ -33,7 +33,7 @@ function collectMarkedPlaces(stages: StageDetail[]): MarkedPlace[] {
   return result
 }
 
-export default function CourseMap({ stages, excludedIds, height = "260px" }: Props) {
+export default function CourseMap({ stages, excludedIds, height = "clamp(240px, 34vw, 380px)" }: Props) {
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])

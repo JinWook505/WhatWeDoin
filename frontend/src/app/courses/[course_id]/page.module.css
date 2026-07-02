@@ -4,6 +4,19 @@
   padding: 24px 20px 80px;
 }
 
+@media (min-width: 900px) {
+  .page {
+    max-width: 820px;
+    padding: 40px 32px 100px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .page {
+    max-width: 900px;
+  }
+}
+
 .centered {
   display: flex;
   flex-direction: column;
