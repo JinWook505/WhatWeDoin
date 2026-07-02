@@ -15,6 +15,7 @@ jest.mock("../lib/api", () => {
 })
 
 import { recommend } from "@/lib/api"
+import { getUsedCount } from "@/lib/quota"
 
 const mockedRecommend = recommend as jest.Mock
 
@@ -34,6 +35,7 @@ function makeCourseData() {
 
 describe("ResultPageClient", () => {
   beforeEach(() => {
+    localStorage.clear()
     mockedRecommend.mockReset()
     mockedRecommend.mockResolvedValue({
       success: true,
@@ -41,6 +43,20 @@ describe("ResultPageClient", () => {
       error: null,
       daily_remaining: 2,
     })
+  })
+
+  it("StrictMode로 effect가 두 번 실행되어도 FE 일일 카운트는 1만 증가한다 (SCRUM-99)", async () => {
+    render(
+      <StrictMode>
+        <ResultPageClient />
+      </StrictMode>,
+    )
+
+    await waitFor(() => expect(mockedRecommend).toHaveBeenCalled())
+    // 두 번째(StrictMode) invoke가 있다면 반영될 시간을 준다.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(getUsedCount()).toBe(1)
   })
 
   it("StrictMode로 effect가 두 번 실행되어도 동일한 idempotency key로만 요청한다", async () => {

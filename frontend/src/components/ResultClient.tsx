@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback } from "react"
 import { recommend, isClarificationResult, CourseData } from "@/lib/api"
 import CourseTimeline from "./CourseTimeline"
 import CourseMap from "./CourseMap"
@@ -23,10 +23,6 @@ export default function ResultClient({ initialData, query, dailyRemaining: initi
   const [error, setError] = useState<string | null>(null)
   const [remaining, setRemaining] = useState<number | null>(initialRemaining ?? null)
 
-  useEffect(() => {
-    incrementUsedCount()
-  }, [])
-
   const toggleExclude = useCallback((placeId: number) => {
     setExcludedIds((prev) => {
       const next = new Set(prev)
@@ -47,6 +43,7 @@ export default function ResultClient({ initialData, query, dailyRemaining: initi
         return
       }
       if (res.data) {
+        incrementUsedCount()
         setData(res.data)
         setExcludedIds(new Set())
         if (res.daily_remaining != null) setRemaining(res.daily_remaining)

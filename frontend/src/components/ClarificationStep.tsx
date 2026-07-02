@@ -5,6 +5,7 @@ import { recommend, isClarificationResult, ApiError, CourseData, StationResult }
 import { COMPANION_TYPE_OPTIONS as COMPANION_OPTIONS, BUDGET_TIER_OPTIONS as BUDGET_OPTIONS } from "@/lib/enumOptions"
 import StationSearch from "./StationSearch"
 import ResultClient from "./ResultClient"
+import { incrementUsedCount } from "@/lib/quota"
 import styles from "./ClarificationStep.module.css"
 
 interface Props {
@@ -68,6 +69,7 @@ export default function ClarificationStep({
         return
       }
       if (res.data) {
+        incrementUsedCount()
         setResult(res.data)
         if (res.daily_remaining != null) setRemaining(res.daily_remaining)
       }
