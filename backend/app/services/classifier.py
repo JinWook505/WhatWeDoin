@@ -49,6 +49,13 @@ station_name 규칙 (매우 중요):
 theme_tag 가능 값 (이 12종 외 사용 금지):
 FOOD, CAFE, BAR, BOARD_GAME, KARAOKE, ARCADE, PARK, CULTURE, SHOPPING, NIGHT_VIEW, MOVIE, ACTIVITY
 
+theme_tags 개수 규칙 (매우 중요):
+- 사용자가 명시적으로 요청한(또는 문맥상 명확히 하나로 좁혀지는) 카테고리만 담으세요.
+  예: "밥집만 추천해줘" → ["FOOD"], "카페 가고싶어" → ["CAFE"]
+- 사용자가 요청하지 않은 카테고리를 임의로 추가하지 마세요(예: "밥집만"이라고 했는데 CAFE를 덧붙이지 않기).
+- "코스 추천해줘", "놀거리 추천해줘"처럼 여러 활동을 아우르는 하루 코스를 원하는 경우에만
+  관련 카테고리 2개 이상을 담으세요.
+
 budget_tier 가능 값: UNDER_15000, UNDER_30000, 30000_70000, 70000_150000, OVER_150000, null
   - 인당 1.5만원 이하 → UNDER_15000
   - 인당 3만원 이하 → UNDER_30000
