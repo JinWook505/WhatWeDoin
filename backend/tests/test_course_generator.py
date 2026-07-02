@@ -118,6 +118,20 @@ class TestParseAndValidate:
     def test_invalid_json_returns_none(self):
         assert _parse_and_validate("not json", {1, 2, 3}) is None
 
+    def test_single_stage_rejected_by_default_min_stages(self):
+        candidate_ids = {1, 2}
+        result = _parse_and_validate(self._valid_response([("식사", [1, 2])]), candidate_ids)
+        assert result is None
+
+    def test_single_stage_accepted_with_min_stages_one(self):
+        """SCRUM-95: single-category requests pass min_stages=1 to allow a 1-stage course."""
+        candidate_ids = {1, 2}
+        result = _parse_and_validate(
+            self._valid_response([("밥집", [1, 2])]), candidate_ids, min_stages=1
+        )
+        assert result is not None
+        assert len(result.stages) == 1
+
 
 class TestGenerateCourse:
     _CANDIDATES = [
@@ -208,6 +222,53 @@ class TestGenerateCourse:
 
         assert result is None
         assert mock_llm.chat.call_count == 3  # generate_course retries 3 times total
+
+    async def test_single_category_theme_tags_allows_one_stage_course(self):
+        """SCRUM-95: a single theme_tag (e.g. 밥집만 추천해줘 → ["FOOD"]) should let the
+        LLM's 1-stage response validate instead of being rejected for too-few-stages."""
+        from app.services.course_generator import generate_course
+
+        mock_llm = AsyncMock()
+        mock_llm.chat.return_value = MagicMock(
+            content=self._llm_response([("밥집", [1, 2, 3])])
+        )
+
+        with patch("app.services.course_generator.search_candidate_places",
+                   AsyncMock(return_value=self._CANDIDATES)), \
+             patch("app.services.course_generator.get_llm_provider", return_value=mock_llm), \
+             patch("app.services.course_generator.fetch_weather", AsyncMock(return_value=None)):
+            result = await generate_course(
+                AsyncMock(), station_id=1,
+                theme_tags=["FOOD"], budget_tier="UNDER_30000",
+                companion_type="COUPLE", query_text="밥집만 추천해줘",
+            )
+
+        assert result is not None
+        assert len(result.stages) == 1
+        assert mock_llm.chat.call_count == 1
+
+    async def test_multi_category_theme_tags_still_requires_two_stages(self):
+        """General/compound requests (2+ theme_tags) keep the existing 2-stage minimum:
+        a 1-stage LLM response should be rejected and retried until exhausted."""
+        from app.services.course_generator import generate_course
+
+        mock_llm = AsyncMock()
+        mock_llm.chat.return_value = MagicMock(
+            content=self._llm_response([("밥집", [1, 2])])
+        )
+
+        with patch("app.services.course_generator.search_candidate_places",
+                   AsyncMock(return_value=self._CANDIDATES)), \
+             patch("app.services.course_generator.get_llm_provider", return_value=mock_llm), \
+             patch("app.services.course_generator.fetch_weather", AsyncMock(return_value=None)):
+            result = await generate_course(
+                AsyncMock(), station_id=1,
+                theme_tags=["FOOD", "CAFE"], budget_tier="UNDER_30000",
+                companion_type="COUPLE", query_text="맛집이랑 카페 코스 추천해줘",
+            )
+
+        assert result is None
+        assert mock_llm.chat.call_count == 3
 
     async def test_raises_when_no_candidates(self):
         from app.services.course_generator import generate_course
