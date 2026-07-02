@@ -150,9 +150,9 @@ class TestBuildCandidatePrompt:
 
     def test_menu_keyword_adds_priority_instruction(self):
         """SCRUM-97: an explicit menu_keyword (e.g. '치킨' from '치맥') must tell the LLM
-        to prioritize name-matching candidates."""
+        to prioritize name-matching candidates when a genuine match exists."""
         candidates = [
-            {"place_id": 1, "name": "마곡닭한마리", "category": "FD6",
+            {"place_id": 1, "name": "교촌치킨 강동점", "category": "FD6",
              "price_range": "3만원대", "user_rating_sum": 0, "user_rating_count": 0},
         ]
         prompt = _build_candidate_prompt(
@@ -161,6 +161,23 @@ class TestBuildCandidatePrompt:
         )
         assert "치킨" in prompt
         assert "최우선" in prompt
+        assert "일치하는 장소가 없습니다" not in prompt
+
+    def test_menu_keyword_with_no_name_match_warns_against_false_claim(self):
+        """SCRUM-98: when no candidate name actually contains the menu_keyword, the LLM
+        must be told not to fabricate that menu for an unrelated place (e.g. labeling
+        '마곡닭한마리' — a whole-chicken hot pot, not fried chicken — as a '치킨' spot)."""
+        candidates = [
+            {"place_id": 1, "name": "마곡닭한마리 강동직영점", "category": "FD6",
+             "price_range": "3만원대", "user_rating_sum": 0, "user_rating_count": 0},
+        ]
+        prompt = _build_candidate_prompt(
+            "강동에서 치맥할건데 추천해줘", candidates, ["FOOD", "BAR"],
+            "UNDER_30000", "FRIEND", None, menu_keyword="치킨",
+        )
+        assert "일치하는 장소가 없습니다" in prompt
+        assert "단정하지 마세요" in prompt
+        assert "최우선으로 선택하세요" not in prompt
 
     def test_no_menu_keyword_omits_priority_instruction(self):
         candidates = [

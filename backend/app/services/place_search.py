@@ -3,6 +3,8 @@ import logging
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.kakao_places import search_kakao_keyword_live, upsert_kakao_docs
+
 logger = logging.getLogger(__name__)
 
 _MIN_CANDIDATES = 5
@@ -51,7 +53,40 @@ async def search_candidate_places(
             session, station_id, _RADIUS_EXPANSION_KM, None, exclude_place_ids, limit, menu_keyword
         )
 
+    # No local place name actually matches the user's menu keyword (e.g. "치킨") —
+    # our offline coverage is a fixed-size sample per station, not exhaustive.
+    # Search Kakao live, persist any real matches, and use them for this request too.
+    if menu_keyword and not any(menu_keyword in (r.get("name") or "") for r in results):
+        live_results = await _live_keyword_fallback(session, station_id, menu_keyword, theme_tags)
+        if live_results:
+            existing_ids = {r["place_id"] for r in results}
+            fresh = [r for r in live_results if r["place_id"] not in existing_ids]
+            results = (fresh + results)[:limit]
+
     return results
+
+
+async def _live_keyword_fallback(
+    session: AsyncSession, station_id: int, menu_keyword: str, theme_tags: list[str] | None,
+) -> list[dict]:
+    station_row = (
+        await session.execute(
+            text("SELECT lat, lng FROM stations WHERE station_id = :sid"),
+            {"sid": station_id},
+        )
+    ).mappings().first()
+    if not station_row:
+        return []
+
+    docs = await search_kakao_keyword_live(menu_keyword, station_row["lat"], station_row["lng"])
+    if not docs:
+        return []
+
+    logger.info(
+        "station=%s: live Kakao search for '%s' found %d results, upserting",
+        station_id, menu_keyword, len(docs),
+    )
+    return await upsert_kakao_docs(session, docs, theme_tags or ["FOOD"])
 
 
 async def _query(
